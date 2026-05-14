@@ -4,10 +4,10 @@
 # LAN. Active proxy mode — it dials the Zabbix server on 10051 and pulls
 # config; nothing else needs to reach this pod from outside.
 #
-# Why a Deployment with emptyDir instead of a StatefulSet + PVC: the proxy
-# is stateless from our point of view (sqlite buffer is short-lived; if the
-# pod dies, the server resends config). emptyDir keeps the pod portable
-# across nodes — see project_zproxy_k3s memory.
+# emptyDir buffer + initContainer that creates the db_data subdir: the
+# Zabbix entrypoint doesn't mkdir its sqlite parent (Z3002 cannot create
+# database) when the volume is fresh, so we do it ourselves before the
+# main container starts. strategy: Recreate because sqlite is single-writer.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -17,6 +17,8 @@ metadata:
     app: zproxy-k3s
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: zproxy-k3s
@@ -25,6 +27,25 @@ spec:
       labels:
         app: zproxy-k3s
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1997
+        runAsGroup: 1995
+        fsGroup: 1995
+      initContainers:
+        - name: init-data
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps && chown -R 1997:1995 /var/lib/zabbix && chmod -R u+rwX /var/lib/zabbix
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
           image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
@@ -67,6 +88,16 @@ spec:
           volumeMounts:
             - name: data
               mountPath: /var/lib/zabbix
+          livenessProbe:
+            tcpSocket:
+              port: 10051
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 10051
+            initialDelaySeconds: 10
+            periodSeconds: 10
       volumes:
         - name: data
           emptyDir:
