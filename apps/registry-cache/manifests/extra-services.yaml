@@ -1,0 +1,54 @@
+---
+# Alias Service for the VRTX replica — kept so anything still referencing
+# `registry-cache-vrtx` (e.g. arc_setup dind /etc/hosts override) keeps
+# working without changes.
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache-vrtx
+  namespace: arc-runners
+spec:
+  type: ClusterIP
+  selector:
+    app: registry-cache
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: 5000
+    - name: metrics
+      port: 5001
+      targetPort: 5001
+---
+# NodePort exposing the VRTX cache's metrics endpoint to Zabbix
+# (VRTX-ProxyGroup scrapes the host network). Pre-zproxy-k3s legacy that's
+# still scraped today — keep the NodePort number stable (30501).
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache-metrics
+  namespace: arc-runners
+spec:
+  type: NodePort
+  selector:
+    app: registry-cache
+  ports:
+    - name: metrics
+      port: 5001
+      targetPort: 5001
+      nodePort: 30501
+---
+# Same idea for the LDC cache — LDC-ProxyGroup scrapes NodePort 30511.
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache-ldc-metrics
+  namespace: arc-runners
+spec:
+  type: NodePort
+  selector:
+    app: registry-cache-ldc
+  ports:
+    - name: metrics
+      port: 5001
+      targetPort: 5001
+      nodePort: 30511

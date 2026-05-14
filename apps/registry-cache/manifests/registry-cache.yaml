@@ -1,0 +1,87 @@
+---
+# Pull-through cache for mcr.microsoft.com. Used by ARC runners for .NET /
+# Docker Hub (registry-1.docker.io) — the main pull-through cache used by containerd. One pod, pinned to a VRTX node — per-DC
+# topology (LDC fallback) lives in a separate Application that adds extra
+# Services and node-labelers.
+#
+# Failure mode: dind has /etc/hosts override pointing at this Service with a
+# health-check fallback to upstream, so a dead cache slows builds but doesn't
+# break them.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-cache
+  namespace: arc-runners
+  labels:
+    app: registry-cache
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-cache
+  template:
+    metadata:
+      labels:
+        app: registry-cache
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["vrtx"]
+      containers:
+        - name: registry
+          image: registry:2
+          env:
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: https://registry-1.docker.io
+            - name: REGISTRY_PROXY_TTL
+              value: "24h"
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: /var/lib/registry
+            - name: REGISTRY_HTTP_ADDR
+              value: :5000
+            - name: REGISTRY_HTTP_DEBUG_ADDR
+              value: :5001
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_ENABLED
+              value: "true"
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_PATH
+              value: /metrics
+          ports:
+            - containerPort: 5000
+              name: registry
+            - containerPort: 5001
+              name: metrics
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+      volumes:
+        - name: registry-data
+          emptyDir:
+            sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache
+  namespace: arc-runners
+spec:
+  selector:
+    app: registry-cache
+  ports:
+    - name: registry
+      port: 5000
+      targetPort: 5000
+    - name: metrics
+      port: 5001
+      targetPort: 5001
+  type: ClusterIP
