@@ -1,0 +1,90 @@
+---
+# Zabbix proxy living inside the k3s cluster. Used to monitor in-cluster
+# Services (apt-cache, registry-cache*, etc.) without exposing them to the
+# LAN. Active proxy mode — it dials the Zabbix server on 10051 and pulls
+# config; nothing else needs to reach this pod from outside.
+#
+# Why a Deployment with emptyDir instead of a StatefulSet + PVC: the proxy
+# is stateless from our point of view (sqlite buffer is short-lived; if the
+# pod dies, the server resends config). emptyDir keeps the pod portable
+# across nodes — see project_zproxy_k3s memory.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zproxy-k3s
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: zproxy-k3s
+  template:
+    metadata:
+      labels:
+        app: zproxy-k3s
+    spec:
+      containers:
+        - name: zabbix-proxy
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          ports:
+            - containerPort: 10051
+              name: zbx-proxy
+              protocol: TCP
+          env:
+            - name: ZBX_HOSTNAME
+              value: zproxy-k3s.k3s.majowka.me
+            - name: ZBX_SERVER_HOST
+              value: zabbix.majowka.me
+            - name: ZBX_SERVER_PORT
+              value: "10051"
+            - name: ZBX_PROXYMODE
+              value: "0"
+            - name: ZBX_CACHESIZE
+              value: 64M
+            - name: ZBX_HISTORYCACHESIZE
+              value: 64M
+            - name: ZBX_HISTORYINDEXCACHESIZE
+              value: 16M
+            - name: ZBX_CONFIGFREQUENCY
+              value: "60"
+            - name: ZBX_DATASENDERFREQUENCY
+              value: "1"
+            - name: ZBX_HEARTBEATFREQUENCY
+              value: "60"
+            - name: ZBX_LOGREMOTECOMMANDS
+              value: "0"
+            - name: ZBX_DEBUGLEVEL
+              value: "3"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zabbix
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zproxy-k3s
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+spec:
+  type: ClusterIP
+  selector:
+    app: zproxy-k3s
+  ports:
+    - name: zbx-proxy
+      port: 10051
+      targetPort: 10051
+      protocol: TCP
