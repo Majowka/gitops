@@ -1,0 +1,88 @@
+---
+# LDC-local replica of registry-cache-gcr. Pulled by ARC runners scheduled
+# on LDC nodes — without this they'd traverse Tailscale across DCs to hit
+# the VRTX pod.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: registry-cache-gcr-ldc
+  namespace: arc-runners
+  labels:
+    app: registry-cache-gcr-ldc
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: registry-cache-gcr-ldc
+  template:
+    metadata:
+      labels:
+        app: registry-cache-gcr-ldc
+    spec:
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["ldc"]
+      containers:
+        - name: registry
+          image: registry:2
+          env:
+            - name: REGISTRY_PROXY_REMOTEURL
+              value: https://mirror.gcr.io
+            - name: REGISTRY_PROXY_TTL
+              value: "24h"
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: /var/lib/registry
+            - name: REGISTRY_HTTP_ADDR
+              value: :5000
+            - name: REGISTRY_HTTP_DEBUG_ADDR
+              value: :5001
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_ENABLED
+              value: "true"
+            - name: REGISTRY_HTTP_DEBUG_PROMETHEUS_PATH
+              value: /metrics
+          ports:
+            - containerPort: 5000
+              name: registry
+            - containerPort: 5001
+              name: metrics
+          readinessProbe:
+            httpGet:
+              path: /v2/
+              port: 5000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+      volumes:
+        - name: registry-data
+          emptyDir:
+            sizeLimit: 10Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache-gcr-ldc
+  namespace: arc-runners
+spec:
+  type: ClusterIP
+  selector:
+    app: registry-cache-gcr-ldc
+  ports:
+    - name: https
+      port: 443
+      targetPort: 5000
+    - name: http
+      port: 80
+      targetPort: 5000
+    - name: registry
+      port: 5000
+      targetPort: 5000
+    - name: metrics
+      port: 5001
+      targetPort: 5001
