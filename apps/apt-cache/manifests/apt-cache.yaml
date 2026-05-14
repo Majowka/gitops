@@ -1,0 +1,141 @@
+---
+# Shared nginx config (same TTLs/upstreams for every zone)
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apt-cache-config
+  namespace: arc-runners
+data:
+  nginx.conf: |
+    user nginx;
+    worker_processes auto;
+    error_log /var/log/nginx/error.log warn;
+    pid /var/run/nginx.pid;
+
+    events {
+        worker_connections 1024;
+    }
+
+    http {
+        include       /etc/nginx/mime.types;
+        default_type  application/octet-stream;
+
+        log_format apt '$remote_addr [$time_local] "$request" $status '
+                      '$body_bytes_sent host=$host upstream=$apt_upstream '
+                      'cache=$upstream_cache_status';
+        access_log /var/log/nginx/access.log apt;
+
+        sendfile on;
+        tcp_nopush on;
+        keepalive_timeout 65;
+
+        proxy_cache_path /cache levels=1:2 keys_zone=apt:50m
+                         max_size=10g inactive=30d
+                         use_temp_path=off;
+
+        # DNS resolver — pod has dnsConfig 1.1.1.1, so nginx sees real upstream IPs
+        resolver 1.1.1.1 8.8.8.8 valid=300s ipv6=off;
+        resolver_timeout 5s;
+
+        proxy_cache_lock on;
+        proxy_cache_lock_timeout 60s;
+        proxy_cache_revalidate on;
+        proxy_cache_use_stale error timeout invalid_header updating
+                              http_500 http_502 http_503 http_504;
+        proxy_cache_background_update on;
+
+        proxy_connect_timeout 10s;
+        proxy_read_timeout 60s;
+        proxy_send_timeout 30s;
+
+        # Host → upstream rewrite
+        map $host $apt_upstream {
+            default                 $host;
+            archive.ubuntu.com      ubuntu.task.gda.pl;
+            security.ubuntu.com     ubuntu.task.gda.pl;
+            ports.ubuntu.com        ubuntu.task.gda.pl;
+            deb.debian.org          ftp.task.gda.pl;
+            security.debian.org     ftp.task.gda.pl;
+        }
+
+        server {
+            listen 80;
+            server_name _;
+
+            allow 10.0.0.0/8;
+            allow 172.16.0.0/12;
+            allow 100.64.0.0/10;
+            deny all;
+
+            location ~* \.(deb|udeb|tar\.gz|tar\.xz|tar\.bz2|tar\.zst|dsc|asc)$ {
+                proxy_pass http://$apt_upstream;
+                proxy_set_header Host $apt_upstream;
+                proxy_http_version 1.1;
+                proxy_cache apt;
+                proxy_cache_valid 200 301 302 365d;
+                proxy_cache_valid 404 1m;
+                proxy_cache_key "$scheme://$host$request_uri";
+                add_header X-Cache-Status $upstream_cache_status always;
+                add_header X-Cache-Type "package" always;
+                add_header X-Cache-Upstream $apt_upstream always;
+            }
+
+            location ~* /(InRelease|Release(\.gpg)?|Packages(\.(gz|xz|bz2))?|Sources(\.(gz|xz|bz2))?|Translation-.*|Contents-.*|by-hash/.*)$ {
+                proxy_pass http://$apt_upstream;
+                proxy_set_header Host $apt_upstream;
+                proxy_http_version 1.1;
+                proxy_cache apt;
+                proxy_cache_valid 200 1h;
+                proxy_cache_valid 404 1m;
+                proxy_cache_key "$scheme://$host$request_uri";
+                add_header X-Cache-Status $upstream_cache_status always;
+                add_header X-Cache-Type "metadata" always;
+                add_header X-Cache-Upstream $apt_upstream always;
+            }
+
+            location / {
+                proxy_pass http://$apt_upstream;
+                proxy_set_header Host $apt_upstream;
+                proxy_http_version 1.1;
+                proxy_cache off;
+                add_header X-Cache-Status "BYPASS" always;
+                add_header X-Cache-Upstream $apt_upstream always;
+            }
+        }
+
+        server {
+            listen 8080;
+            server_name _;
+
+            location = /status {
+                stub_status on;
+                access_log off;
+            }
+
+            location = /healthz {
+                return 200 "ok\n";
+                access_log off;
+            }
+        }
+    }
+---
+# Main Service — selector app=apt-cache catches all per-zone StatefulSets
+# Clients hit this single endpoint (via DNS rewrite in CoreDNS).
+apiVersion: v1
+kind: Service
+metadata:
+  name: apt-cache
+  namespace: arc-runners
+  labels:
+    app: apt-cache
+spec:
+  type: ClusterIP
+  selector:
+    app: apt-cache
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: status
+      port: 8080
+      targetPort: 8080

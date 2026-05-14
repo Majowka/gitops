@@ -1,0 +1,99 @@
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: apt-cache-vrtx
+  namespace: arc-runners
+  labels:
+    app: apt-cache
+    zone: vrtx
+spec:
+  serviceName: apt-cache-vrtx
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apt-cache
+      zone: vrtx
+  template:
+    metadata:
+      labels:
+        app: apt-cache
+        zone: vrtx
+    spec:
+      dnsPolicy: None
+      dnsConfig:
+        nameservers:
+          - 1.1.1.1
+          - 8.8.8.8
+        options:
+          - name: ndots
+            value: "1"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["vrtx"]
+      containers:
+        - name: nginx
+          image: nginx:1.27-alpine
+          ports:
+            - containerPort: 80
+              name: http
+            - containerPort: 8080
+              name: status
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "1000m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: config
+              mountPath: /etc/nginx/nginx.conf
+              subPath: nginx.conf
+            - name: cache
+              mountPath: /cache
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+            initialDelaySeconds: 2
+            periodSeconds: 10
+      volumes:
+        - name: config
+          configMap:
+            name: apt-cache-config
+        - name: cache
+          emptyDir:
+            sizeLimit: 3Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: apt-cache-vrtx
+  namespace: arc-runners
+  labels:
+    app: apt-cache
+    zone: vrtx
+spec:
+  type: ClusterIP
+  selector:
+    app: apt-cache
+    zone: vrtx
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+    - name: status
+      port: 8080
+      targetPort: 8080

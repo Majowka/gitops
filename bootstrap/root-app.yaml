@@ -1,0 +1,31 @@
+---
+# Root "app-of-apps" — bootstraps every Application under apps/ in this repo.
+# Apply this once after ArgoCD is installed:
+#   kubectl apply -f bootstrap/root-app.yaml
+# After that, adding a new app = adding apps/<name>/Application.yaml + manifests
+# in a PR. ArgoCD picks it up automatically.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Majowka/gitops.git
+    targetRevision: main
+    path: apps
+    directory:
+      recurse: true
+      include: "*/Application.yaml"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
