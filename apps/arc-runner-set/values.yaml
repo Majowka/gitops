@@ -121,7 +121,7 @@ template:
             if [ -n "$DOCKER_CACHE_IP" ] && wget -q --spider --timeout=2 "http://${DOCKER_CACHE_HOST}:5000/v2/" 2>/dev/null; then
               echo "${DOCKER_CACHE_IP} registry-1.docker.io" >> /etc/hosts
             fi
-            exec dockerd --host=unix:///var/run/docker.sock --group=123
+            exec dockerd --host=unix:///var/run/docker.sock --group=$DOCKER_GROUP_GID
         volumeMounts:
           - name: dind-sock
             mountPath: /var/run
