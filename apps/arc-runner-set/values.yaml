@@ -1,0 +1,170 @@
+githubConfigUrl: "https://github.com/kamcio2603/mesh-manager"
+githubConfigSecret: "arc-github-secret"
+runnerScaleSetName: "k3s-arc"
+scaleSetLabels:
+  - self-hosted
+  - builder
+minRunners: 2
+maxRunners: 25
+containerMode: {}
+template:
+  spec:
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/part-of: gha-runner-scale-set
+      - maxSkew: 3
+        topologyKey: topology.kubernetes.io/zone
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/part-of: gha-runner-scale-set
+    terminationGracePeriodSeconds: 600
+    initContainers:
+      - name: init-dind-externals
+        image: ghcr.io/majowka/arc-runner:latest
+        command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+      - name: configure-registry-mirrors
+        image: busybox:latest
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        command:
+          - /bin/sh
+          - -c
+          - |
+            case "$NODE_NAME" in
+              ldc-*)                ZONE="ldc"  ;;
+              k3s-worker[4-7])      ZONE="ldc"  ;;
+              k3s-worker[89])       ZONE="azpl" ;;
+              k3s-worker1[0-9])     ZONE="azpl" ;;
+              *)                    ZONE="vrtx" ;;
+            esac
+            cat > /docker-config/daemon.json <<EOF
+            {
+              "registry-mirrors": [
+                "http://registry-cache-${ZONE}.arc-runners.svc.cluster.local:5000"
+              ],
+              "insecure-registries": [
+                "registry-cache-${ZONE}.arc-runners.svc.cluster.local:5000",
+                "registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local:5000",
+                "registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local:5000",
+                "mirror.gcr.io",
+                "mcr.microsoft.com",
+                "registry-1.docker.io"
+              ],
+              "mtu": 1230,
+              "default-network-opts": {
+                "bridge": {
+                  "com.docker.network.driver.mtu": "1230"
+                }
+              }
+            }
+            EOF
+            cat > /buildx-config/buildkitd.toml <<EOF
+            [registry."mcr.microsoft.com"]
+              mirrors = ["registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
+
+            [registry."registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
+              http = true
+              insecure = true
+            EOF
+        volumeMounts:
+          - name: docker-config
+            mountPath: /docker-config
+          - name: buildx-config
+            mountPath: /buildx-config
+      - name: dind
+        image: docker:dind
+        restartPolicy: Always
+        securityContext:
+          privileged: true
+        resources:
+          requests:
+            cpu: "1000m"
+            memory: "1500Mi"
+        env:
+          - name: DOCKER_GROUP_GID
+            value: "123"
+          - name: NODE_NAME
+            valueFrom:
+              fieldRef:
+                fieldPath: spec.nodeName
+        command:
+          - sh
+          - -c
+          - |
+            sleep 3
+            case "$NODE_NAME" in
+              ldc-*)                ZONE="ldc"  ;;
+              k3s-worker[4-7])      ZONE="ldc"  ;;
+              k3s-worker[89])       ZONE="azpl" ;;
+              k3s-worker1[0-9])     ZONE="azpl" ;;
+              *)                    ZONE="vrtx" ;;
+            esac
+            CACHE_HOST="registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local"
+            CACHE_IP=$(getent hosts "$CACHE_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
+            if [ -n "$CACHE_IP" ] && wget -q --spider --timeout=2 "http://${CACHE_HOST}:5000/v2/" 2>/dev/null; then
+              echo "${CACHE_IP} mirror.gcr.io" >> /etc/hosts
+            fi
+            MCR_CACHE_HOST="registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local"
+            MCR_CACHE_IP=$(getent hosts "$MCR_CACHE_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
+            if [ -n "$MCR_CACHE_IP" ] && wget -q --spider --timeout=2 "http://${MCR_CACHE_HOST}:5000/v2/" 2>/dev/null; then
+              echo "${MCR_CACHE_IP} mcr.microsoft.com" >> /etc/hosts
+            fi
+            DOCKER_CACHE_HOST="registry-cache-${ZONE}.arc-runners.svc.cluster.local"
+            DOCKER_CACHE_IP=$(getent hosts "$DOCKER_CACHE_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
+            if [ -n "$DOCKER_CACHE_IP" ] && wget -q --spider --timeout=2 "http://${DOCKER_CACHE_HOST}:5000/v2/" 2>/dev/null; then
+              echo "${DOCKER_CACHE_IP} registry-1.docker.io" >> /etc/hosts
+            fi
+            exec dockerd --host=unix:///var/run/docker.sock --group=123
+        volumeMounts:
+          - name: dind-sock
+            mountPath: /var/run
+          - name: work
+            mountPath: /home/runner/_work
+          - name: docker-config
+            mountPath: /etc/docker
+    containers:
+      - name: runner
+        image: ghcr.io/majowka/arc-runner:latest
+        resources:
+          requests:
+            cpu: "2000m"
+            memory: "2500Mi"
+        env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+          - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+            value: "120"
+          - name: BUILDX_CONFIG
+            value: /home/runner/.docker/buildx
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/externals
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: buildx-config
+            mountPath: /home/runner/.docker/buildx
+    volumes:
+      - name: dind-sock
+        emptyDir: {}
+      - name: work
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      - name: docker-config
+        emptyDir: {}
+      - name: buildx-config
+        emptyDir: {}
