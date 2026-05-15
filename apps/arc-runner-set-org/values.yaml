@@ -1,9 +1,9 @@
-githubConfigUrl: "https://github.com/kamcio2603/mesh-manager"
-githubConfigSecret: "arc-github-secret"
-runnerScaleSetName: "k3s-arc"
+githubConfigUrl: "https://github.com/majowka"
+githubConfigSecret: "arc-github-secret-org"
+runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
-  - builder
+  - builder-org
 minRunners: 2
 maxRunners: 25
 containerMode: {}
