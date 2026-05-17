@@ -18,9 +18,6 @@ spec:
     - repoURL: https://github.com/Majowka/gitops.git
       targetRevision: main
       ref: values
-    - repoURL: https://github.com/Majowka/gitops.git
-      targetRevision: main
-      path: apps/arc-runner-set-org/manifests
   destination:
     server: https://kubernetes.default.svc
     namespace: arc-runners
