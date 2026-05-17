@@ -33,8 +33,6 @@ template:
             mountPath: /home/runner/tmpDir
       - name: configure-registry-mirrors
         image: bitnami/kubectl:latest
-        securityContext:
-          runAsUser: 0
         env:
           - name: NODE_NAME
             valueFrom:
@@ -79,26 +77,6 @@ template:
               http = true
               insecure = true
             EOF
-
-            # apt-cache per-zone /etc/hosts — ten sam wzorzec co registry-cache w dind.
-            # Init container kończy się przed startem runnera → /etc/hosts gotowy bez race condition.
-            # Brak ready endpoints = brak override → apt idzie bezpośrednio do internetu.
-            APT_READY=$(kubectl get endpoints apt-cache-${ZONE} -n arc-runners \
-              -o jsonpath='{.subsets[0].addresses[0].ip}' 2>/dev/null)
-            if [ -n "$APT_READY" ]; then
-              APT_IP=$(kubectl get svc apt-cache-${ZONE} -n arc-runners \
-                -o jsonpath='{.spec.clusterIP}' 2>/dev/null)
-              if [ -n "$APT_IP" ]; then
-                for h in archive.ubuntu.com security.ubuntu.com ports.ubuntu.com \
-                          ubuntu.task.gda.pl ftp.task.gda.pl ftp.man.poznan.pl \
-                          ftp.icm.edu.pl deb.debian.org security.debian.org; do
-                  echo "${APT_IP} ${h}" >> /etc/hosts
-                done
-                echo "apt-cache: zone=${ZONE} svcIP=${APT_IP} — hosts configured"
-              fi
-            else
-              echo "apt-cache: zone=${ZONE} no ready endpoints — direct internet"
-            fi
         volumeMounts:
           - name: docker-config
             mountPath: /docker-config
@@ -142,6 +120,18 @@ template:
             DOCKER_CACHE_IP=$(getent hosts "$DOCKER_CACHE_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
             if [ -n "$DOCKER_CACHE_IP" ] && wget -q --spider --timeout=2 "http://${DOCKER_CACHE_HOST}:5000/v2/" 2>/dev/null; then
               echo "${DOCKER_CACHE_IP} registry-1.docker.io" >> /etc/hosts
+            fi
+            APT_HOST="apt-cache-${ZONE}.arc-runners.svc.cluster.local"
+            APT_IP=$(getent hosts "$APT_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
+            if [ -n "$APT_IP" ] && wget -q --spider --timeout=2 "http://${APT_HOST}:8080/healthz" 2>/dev/null; then
+              for h in archive.ubuntu.com security.ubuntu.com ports.ubuntu.com \
+                        ubuntu.task.gda.pl ftp.task.gda.pl ftp.man.poznan.pl \
+                        ftp.icm.edu.pl deb.debian.org security.debian.org; do
+                echo "${APT_IP} ${h}" >> /etc/hosts
+              done
+              echo "apt-cache: zone=${ZONE} svcIP=${APT_IP} — hosts configured"
+            else
+              echo "apt-cache: zone=${ZONE} no healthy endpoint — direct internet"
             fi
             exec dockerd --host=unix:///var/run/docker.sock --group=$DOCKER_GROUP_GID
         volumeMounts:
