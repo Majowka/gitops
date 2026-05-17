@@ -33,6 +33,8 @@ template:
             mountPath: /home/runner/tmpDir
       - name: configure-registry-mirrors
         image: bitnami/kubectl:latest
+        securityContext:
+          runAsUser: 0
         env:
           - name: NODE_NAME
             valueFrom:
