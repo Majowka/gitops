@@ -26,3 +26,30 @@ subjects:
   - kind: ServiceAccount
     name: arc-runner
     namespace: arc-runners
+---
+# Pozwala configure-registry-mirrors init-containerowi sprawdzić gotowość
+# apt-cache-{zone} (endpoints) i odczytać ClusterIP (services) — potrzebne
+# do per-zone /etc/hosts override bez watchdoga i CoreDNS rewrite.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: arc-runner-cache-reader
+  namespace: arc-runners
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints", "services"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: arc-runner-cache-reader
+  namespace: arc-runners
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: arc-runner-cache-reader
+subjects:
+  - kind: ServiceAccount
+    name: arc-runner
+    namespace: arc-runners
