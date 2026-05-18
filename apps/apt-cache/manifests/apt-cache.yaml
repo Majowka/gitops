@@ -119,8 +119,9 @@ data:
         }
     }
 ---
-# Main Service — selector app=apt-cache catches all per-zone StatefulSets
-# Clients hit this single endpoint (via DNS rewrite in CoreDNS).
+# Main Service — selector app=apt-cache catches all per-zone StatefulSets.
+# trafficDistribution: PreferClose routes runners to the in-zone pod
+# (uses topology.kubernetes.io/zone set by zone-labeler DaemonSet).
 apiVersion: v1
 kind: Service
 metadata:
@@ -130,6 +131,7 @@ metadata:
     app: apt-cache
 spec:
   type: ClusterIP
+  trafficDistribution: PreferClose
   selector:
     app: apt-cache
   ports:

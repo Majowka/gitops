@@ -1,0 +1,30 @@
+---
+# CoreDNS rewrite rules — transparent APT cache routing.
+# Rewrites apt mirror hostnames to apt-cache Service ClusterIP so that
+# all pods (runner containers + docker build containers via 127.0.0.11
+# → upstream CoreDNS chain) hit the local cache without any Dockerfile
+# or workflow changes.
+#
+# apt-cache pods use dnsPolicy: None + 1.1.1.1 to avoid resolving
+# their own upstreams through this rewrite (no loop).
+#
+# Zone affinity is handled by trafficDistribution: PreferClose on the
+# apt-cache Service — CoreDNS always returns the same ClusterIP,
+# kube-proxy picks the nearest endpoint.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coredns-custom
+  namespace: kube-system
+data:
+  apt-cache.override: |
+    rewrite name exact archive.ubuntu.com      apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact security.ubuntu.com     apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact ports.ubuntu.com        apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact ubuntu.task.gda.pl      apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact ftp.task.gda.pl         apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact ftp.man.poznan.pl       apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact ftp.icm.edu.pl          apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact deb.debian.org          apt-cache.arc-runners.svc.cluster.local
+    rewrite name exact security.debian.org     apt-cache.arc-runners.svc.cluster.local
+  apt-cache.server: ""
