@@ -47,11 +47,12 @@ subjects:
     name: apt-cache-watchdog
     namespace: arc-runners
 ---
-# Cross-namespace: needs ClusterRole to patch coredns-custom in kube-system
+# Scoped to kube-system only — Role (not ClusterRole) avoids cluster-wide create
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRole
+kind: Role
 metadata:
   name: apt-cache-watchdog-coredns
+  namespace: kube-system
 rules:
   - apiGroups: [""]
     resources: ["configmaps"]
@@ -59,15 +60,16 @@ rules:
     verbs: ["get", "patch"]
   - apiGroups: [""]
     resources: ["configmaps"]
-    verbs: ["create"]  # resourceNames cannot restrict create verb
+    verbs: ["create"]  # resourceNames cannot restrict create verb, but scope is kube-system only
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
   name: apt-cache-watchdog-coredns
+  namespace: kube-system
 roleRef:
   apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
+  kind: Role
   name: apt-cache-watchdog-coredns
 subjects:
   - kind: ServiceAccount
@@ -96,10 +98,12 @@ data:
     RULES="rewrite name exact archive.ubuntu.com      apt-cache.arc-runners.svc.cluster.local\nrewrite name exact security.ubuntu.com     apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ports.ubuntu.com        apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ubuntu.task.gda.pl      apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.task.gda.pl         apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.man.poznan.pl       apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.icm.edu.pl          apt-cache.arc-runners.svc.cluster.local\nrewrite name exact deb.debian.org          apt-cache.arc-runners.svc.cluster.local\nrewrite name exact security.debian.org     apt-cache.arc-runners.svc.cluster.local"
 
     ready_count() {
+      # awk always exits 0 and prints a single integer — avoids grep -c exiting non-zero
+      # on zero matches (which caused || echo 0 to emit "0 0", breaking numeric comparison)
       kubectl get endpointslice -n "$NS" \
         -l "kubernetes.io/service-name=apt-cache-${1}" \
         -o jsonpath='{range .items[*]}{range .endpoints[*]}{.conditions.ready}{"\n"}{end}{end}' \
-        2>/dev/null | grep -c "^true$" || echo 0
+        2>/dev/null | awk '$0=="true"{c++} END{print c+0}'
     }
 
     patch_cm() {
@@ -123,18 +127,34 @@ data:
     while true; do
       for z in $ZONES; do
         n=$(ready_count "$z")
-        eval "prev=\$fail_${z}"
+        case "$z" in
+          vrtx) prev=$fail_vrtx ;;
+          ldc)  prev=$fail_ldc ;;
+          azpl) prev=$fail_azpl ;;
+        esac
         if [ "$n" -gt 0 ]; then
-          eval "fail_${z}=0"
+          case "$z" in
+            vrtx) fail_vrtx=0 ;;
+            ldc)  fail_ldc=0 ;;
+            azpl) fail_azpl=0 ;;
+          esac
         else
-          eval "fail_${z}=$((prev + 1))"
+          case "$z" in
+            vrtx) fail_vrtx=$((prev + 1)) ;;
+            ldc)  fail_ldc=$((prev + 1)) ;;
+            azpl) fail_azpl=$((prev + 1)) ;;
+          esac
         fi
       done
 
       desired="enabled"
       bad=""
       for z in $ZONES; do
-        eval "fc=\$fail_${z}"
+        case "$z" in
+          vrtx) fc=$fail_vrtx ;;
+          ldc)  fc=$fail_ldc ;;
+          azpl) fc=$fail_azpl ;;
+        esac
         if [ "$fc" -ge "$DEBOUNCE" ]; then
           desired="disabled"
           bad="${bad} ${z}(${fc}x)"
@@ -174,10 +194,22 @@ spec:
         app: apt-cache-watchdog
     spec:
       serviceAccountName: apt-cache-watchdog
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: watchdog
-          image: bitnami/kubectl:1.34
+          image: bitnami/kubectl:latest
           command: ["/bin/sh", "/scripts/watchdog.sh"]
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          env:
+            - name: HOME
+              value: /tmp  # kubectl writes discovery cache to $HOME/.kube; /tmp is writable
           resources:
             requests:
               cpu: "10m"
@@ -188,8 +220,12 @@ spec:
           volumeMounts:
             - name: script
               mountPath: /scripts
+            - name: tmp
+              mountPath: /tmp
       volumes:
         - name: script
           configMap:
             name: apt-cache-watchdog-script
             defaultMode: 0755
+        - name: tmp
+          emptyDir: {}
