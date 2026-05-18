@@ -1,0 +1,195 @@
+---
+# apt-cache-watchdog: toggles CoreDNS rewrite rules based on per-zone cache health.
+#
+# Logic:
+#   all 3 zones have ready endpoints → apt-cache.override = 9 rewrite rules
+#                                      trafficDistribution: PreferClose routes
+#                                      runners to local-zone cache, no cross-VPN
+#   any zone has 0 ready endpoints   → apt-cache.override = ""
+#                                      apt hostnames resolve to real internet IPs
+#                                      → direct internet, no cross-zone VPN fallback
+#
+# Debounce: zone must have 0 ready endpoints for 2 consecutive checks (~30s)
+# before the rewrite is disabled, to avoid flapping on brief pod restarts.
+#
+# coredns-custom ConfigMap is patched in kube-system directly.
+# ArgoCD does NOT manage that ConfigMap (not in this Application scope),
+# so selfHeal will not revert watchdog changes.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: apt-cache-watchdog
+  namespace: arc-runners
+---
+# EndpointSlice reads scoped to arc-runners namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: apt-cache-watchdog
+  namespace: arc-runners
+rules:
+  - apiGroups: ["discovery.k8s.io"]
+    resources: ["endpointslices"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: apt-cache-watchdog
+  namespace: arc-runners
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: apt-cache-watchdog
+subjects:
+  - kind: ServiceAccount
+    name: apt-cache-watchdog
+    namespace: arc-runners
+---
+# Cross-namespace: needs ClusterRole to patch coredns-custom in kube-system
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: apt-cache-watchdog-coredns
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["coredns-custom"]
+    verbs: ["get", "patch"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["create"]  # resourceNames cannot restrict create verb
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: apt-cache-watchdog-coredns
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: apt-cache-watchdog-coredns
+subjects:
+  - kind: ServiceAccount
+    name: apt-cache-watchdog
+    namespace: arc-runners
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: apt-cache-watchdog-script
+  namespace: arc-runners
+data:
+  watchdog.sh: |
+    #!/bin/sh
+    set -eu
+
+    NS="arc-runners"
+    CM_NS="kube-system"
+    CM="coredns-custom"
+    ZONES="vrtx ldc azpl"
+    INTERVAL=15
+    DEBOUNCE=2
+
+    # Single-line JSON string value: \n = JSON newline escape, each rule on its own line.
+    # Must stay in sync with nginx host→upstream map in apt-cache-config ConfigMap.
+    RULES="rewrite name exact archive.ubuntu.com      apt-cache.arc-runners.svc.cluster.local\nrewrite name exact security.ubuntu.com     apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ports.ubuntu.com        apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ubuntu.task.gda.pl      apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.task.gda.pl         apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.man.poznan.pl       apt-cache.arc-runners.svc.cluster.local\nrewrite name exact ftp.icm.edu.pl          apt-cache.arc-runners.svc.cluster.local\nrewrite name exact deb.debian.org          apt-cache.arc-runners.svc.cluster.local\nrewrite name exact security.debian.org     apt-cache.arc-runners.svc.cluster.local"
+
+    ready_count() {
+      kubectl get endpointslice -n "$NS" \
+        -l "kubernetes.io/service-name=apt-cache-${1}" \
+        -o jsonpath='{range .items[*]}{range .endpoints[*]}{.conditions.ready}{"\n"}{end}{end}' \
+        2>/dev/null | grep -c "^true$" || echo 0
+    }
+
+    patch_cm() {
+      value=$1
+      if ! kubectl get configmap "$CM" -n "$CM_NS" >/dev/null 2>&1; then
+        echo "$(date -u +%FT%TZ) coredns-custom not found, creating"
+        kubectl create configmap "$CM" -n "$CM_NS" \
+          --from-literal="apt-cache.override=${value}" \
+          --from-literal="apt-cache.server="
+        return
+      fi
+      kubectl patch configmap "$CM" -n "$CM_NS" --type merge \
+        --patch "{\"data\":{\"apt-cache.override\":\"${value}\",\"apt-cache.server\":\"\"}}"
+    }
+
+    fail_vrtx=0; fail_ldc=0; fail_azpl=0
+    LAST=""
+
+    echo "$(date -u +%FT%TZ) apt-cache-watchdog started (interval=${INTERVAL}s debounce=${DEBOUNCE})"
+
+    while true; do
+      for z in $ZONES; do
+        n=$(ready_count "$z")
+        eval "prev=\$fail_${z}"
+        if [ "$n" -gt 0 ]; then
+          eval "fail_${z}=0"
+        else
+          eval "fail_${z}=$((prev + 1))"
+        fi
+      done
+
+      desired="enabled"
+      bad=""
+      for z in $ZONES; do
+        eval "fc=\$fail_${z}"
+        if [ "$fc" -ge "$DEBOUNCE" ]; then
+          desired="disabled"
+          bad="${bad} ${z}(${fc}x)"
+        fi
+      done
+
+      if [ "$desired" != "$LAST" ]; then
+        if [ "$desired" = "enabled" ]; then
+          echo "$(date -u +%FT%TZ) all zones healthy → enabling CoreDNS rewrite"
+          patch_cm "$RULES" && LAST="enabled" \
+            || echo "$(date -u +%FT%TZ) ERROR: patch failed, retry next cycle"
+        else
+          echo "$(date -u +%FT%TZ) unhealthy:${bad} → disabling rewrite, apt → direct internet"
+          patch_cm "" && LAST="disabled" \
+            || echo "$(date -u +%FT%TZ) ERROR: patch failed, retry next cycle"
+        fi
+      fi
+
+      sleep "$INTERVAL"
+    done
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: apt-cache-watchdog
+  namespace: arc-runners
+  labels:
+    app: apt-cache-watchdog
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: apt-cache-watchdog
+  template:
+    metadata:
+      labels:
+        app: apt-cache-watchdog
+    spec:
+      serviceAccountName: apt-cache-watchdog
+      containers:
+        - name: watchdog
+          image: bitnami/kubectl:1.34
+          command: ["/bin/sh", "/scripts/watchdog.sh"]
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "32Mi"
+            limits:
+              cpu: "50m"
+              memory: "64Mi"
+          volumeMounts:
+            - name: script
+              mountPath: /scripts
+      volumes:
+        - name: script
+          configMap:
+            name: apt-cache-watchdog-script
+            defaultMode: 0755
