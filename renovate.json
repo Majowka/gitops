@@ -4,13 +4,16 @@
   "labels": ["renovate", "dependencies"],
   "prHourlyLimit": 2,
   "prConcurrentLimit": 5,
+  "argocd": {
+    "fileMatch": ["apps/.*/Application\\.yaml$"]
+  },
   "kubernetes": {
-    "fileMatch": ["apps/.*/manifests/.*\.yaml$", "apps/.*/values\.yaml$"]
+    "fileMatch": ["apps/.*/manifests/.*\\.yaml$", "apps/.*/values\\.yaml$"]
   },
   "packageRules": [
     {
-      "description": "Floating :latest tags — nie śledź",
-      "matchCurrentVersion": "/latest/",
+      "description": "Dokładnie tag :latest — nie śledź",
+      "matchCurrentVersion": "^latest$",
       "enabled": false
     },
     {
