@@ -29,7 +29,7 @@ spec:
                     values: ["azpl"]
       containers:
         - name: registry
-          image: registry:2
+          image: registry:3@sha256:6ad90ba0078c20cbdaa26b08aa2005a6ba409234f50f485d25eadd604704511e
           env:
             - name: REGISTRY_PROXY_REMOTEURL
               value: https://mcr.microsoft.com
