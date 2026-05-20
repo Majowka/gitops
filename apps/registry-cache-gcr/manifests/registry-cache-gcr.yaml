@@ -34,7 +34,7 @@ spec:
                     values: ["vrtx"]
       containers:
         - name: registry
-          image: registry:2
+          image: registry:3
           env:
             - name: REGISTRY_PROXY_REMOTEURL
               value: https://mirror.gcr.io
