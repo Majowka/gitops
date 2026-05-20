@@ -1,0 +1,30 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "labels": ["renovate", "dependencies"],
+  "prHourlyLimit": 2,
+  "prConcurrentLimit": 5,
+  "argocd": {
+    "fileMatch": ["apps/.*/Application\\.yaml$"]
+  },
+  "kubernetes": {
+    "fileMatch": ["apps/.*/manifests/.*\\.yaml$", "apps/.*/values\\.yaml$"]
+  },
+  "packageRules": [
+    {
+      "description": "Dokładnie tag :latest — nie śledź",
+      "matchCurrentVersion": "^latest$",
+      "enabled": false
+    },
+    {
+      "description": "Zabbix proxy — floating *-latest tag",
+      "matchPackageNames": ["zabbix/zabbix-proxy-sqlite3"],
+      "enabled": false
+    },
+    {
+      "description": "ARC runner image — własny obraz, rebuildowany co tydzień",
+      "matchPackageNames": ["ghcr.io/majowka/arc-runner"],
+      "enabled": false
+    }
+  ]
+}
