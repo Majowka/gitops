@@ -33,6 +33,12 @@ metadata:
   namespace: monitoring
   labels:
     app: zproxy-k3s
+  annotations:
+    # Migracja ClusterIP -> headless zmienia immutable spec.clusterIP —
+    # zwykły apply by się wywalił. Force=true,Replace=true każe ArgoCD
+    # odtworzyć Service (delete+create) przy tym diffie, bez ręcznego
+    # kubectl delete svc. Opcja działa per-resource i tylko gdy jest diff.
+    argocd.argoproj.io/sync-options: Replace=true,Force=true
 spec:
   # Headless — this is the StatefulSet governing Service. It gives each pod
   # a stable DNS name (zproxy-k3s-N.zproxy-k3s.monitoring.svc.cluster.local)
@@ -138,7 +144,7 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 320Mi
+              memory: 352Mi
             limits:
               cpu: 500m
               memory: 512Mi
@@ -159,3 +165,20 @@ spec:
         - name: data
           emptyDir:
             sizeLimit: 1Gi
+---
+# Utrzymuje min. 1 proxy w górze podczas dobrowolnych zakłóceń (drain
+# węzła). Przy 2 replikach + required anti-affinity pody są na osobnych
+# węzłach — PDB blokuje drain drugiego węzła dopóki pierwszy proxy nie
+# wróci Ready, więc grupa proxy nigdy nie spada do zera członków.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zproxy-k3s
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: zproxy-k3s
