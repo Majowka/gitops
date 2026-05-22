@@ -8,6 +8,13 @@
 # Zabbix entrypoint doesn't mkdir its sqlite parent (Z3002 cannot create
 # database) when the volume is fresh, so we do it ourselves before the
 # main container starts. strategy: Recreate because sqlite is single-writer.
+#
+# ProxyBufferMode=memory (Zabbix 7.0+): collected history/discovery data is
+# buffered in RAM, not the sqlite DB. The DB then only holds config synced
+# from the server, so write pressure on the sqlite file drops to near zero —
+# that constant write traffic is what kept corrupting it (malformed image
+# after a hard kill mid-write -> CrashLoop). The RAM buffer is dropped on
+# restart, which is fine here: the emptyDir buffer already is ephemeral.
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -62,6 +69,10 @@ spec:
               value: "10051"
             - name: ZBX_PROXYMODE
               value: "0"
+            - name: ZBX_PROXYBUFFERMODE
+              value: memory
+            - name: ZBX_PROXYMEMORYBUFFERSIZE
+              value: 96M
             - name: ZBX_CACHESIZE
               value: 64M
             - name: ZBX_HISTORYCACHESIZE
@@ -81,7 +92,7 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 256Mi
+              memory: 320Mi
             limits:
               cpu: 500m
               memory: 512Mi
