@@ -1,24 +1,69 @@
 ---
-# Zabbix proxy living inside the k3s cluster. Used to monitor in-cluster
+# Zabbix proxy HA inside the k3s cluster. Used to monitor in-cluster
 # Services (apt-cache, registry-cache*, etc.) without exposing them to the
-# LAN. Active proxy mode — it dials the Zabbix server on 10051 and pulls
-# config; nothing else needs to reach this pod from outside.
+# LAN. Active proxy mode — each pod dials the Zabbix server on 10051 and
+# pulls config; nothing reaches these pods from outside.
 #
-# emptyDir buffer + initContainer that creates the db_data subdir: the
-# Zabbix entrypoint doesn't mkdir its sqlite parent (Z3002 cannot create
-# database) when the volume is fresh, so we do it ourselves before the
-# main container starts. strategy: Recreate because sqlite is single-writer.
+# HA via Zabbix 7.0 Proxy Group (K3S-ProxyGroup): 2 pods, each registered
+# as a distinct proxy (zproxy-k3s-0 / zproxy-k3s-1). The server distributes
+# monitored hosts across the live members and reassigns them on failure.
+# The proxy group + per-proxy registration is done by the Ansible role
+# zabbix_proxy_k3s — the proxies MUST exist server-side before the pods
+# connect, otherwise the server rejects the unknown proxy.
+#
+# StatefulSet (not Deployment): each Zabbix proxy is a distinct named
+# entity, so the pods need stable identity — pod name == proxy name, fed
+# into ZBX_HOSTNAME via the downward API. podAntiAffinity (required) keeps
+# the two pods on separate nodes so losing one node never takes out the
+# whole group. emptyDir is per-replica, so each proxy has its own sqlite.
+#
+# initContainer creates the db_data subdir: the Zabbix entrypoint doesn't
+# mkdir its sqlite parent (Z3002 cannot create database) on a fresh volume.
+#
+# ProxyBufferMode=memory (Zabbix 7.0+): collected history/discovery data is
+# buffered in RAM, not the sqlite DB. The DB then only holds config synced
+# from the server, so write pressure on the sqlite file drops to near zero —
+# that constant write traffic is what kept corrupting it (malformed image
+# after a hard kill mid-write -> CrashLoop). The RAM buffer is dropped on
+# restart, which is fine here: the emptyDir buffer already is ephemeral.
+apiVersion: v1
+kind: Service
+metadata:
+  name: zproxy-k3s
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+  annotations:
+    # Migracja ClusterIP -> headless zmienia immutable spec.clusterIP —
+    # zwykły apply by się wywalił. Force=true,Replace=true każe ArgoCD
+    # odtworzyć Service (delete+create) przy tym diffie, bez ręcznego
+    # kubectl delete svc. Opcja działa per-resource i tylko gdy jest diff.
+    argocd.argoproj.io/sync-options: Replace=true,Force=true
+spec:
+  # Headless — this is the StatefulSet governing Service. It gives each pod
+  # a stable DNS name (zproxy-k3s-N.zproxy-k3s.monitoring.svc.cluster.local)
+  # used as the proxy's local_address in the proxy group registration.
+  clusterIP: None
+  selector:
+    app: zproxy-k3s
+  ports:
+    - name: zbx-proxy
+      port: 10051
+      targetPort: 10051
+      protocol: TCP
+---
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: zproxy-k3s
   namespace: monitoring
   labels:
     app: zproxy-k3s
 spec:
-  replicas: 1
-  strategy:
-    type: Recreate
+  replicas: 2
+  serviceName: zproxy-k3s
+  # Proxies are independent — no ordering dependency between pods.
+  podManagementPolicy: Parallel
   selector:
     matchLabels:
       app: zproxy-k3s
@@ -32,6 +77,15 @@ spec:
         runAsUser: 1997
         runAsGroup: 1995
         fsGroup: 1995
+      # Hard anti-affinity: the two proxy pods must land on separate nodes
+      # so a single node failure can never take the whole proxy group down.
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: zproxy-k3s
+              topologyKey: kubernetes.io/hostname
       initContainers:
         - name: init-data
           image: busybox:1.37
@@ -54,14 +108,23 @@ spec:
               name: zbx-proxy
               protocol: TCP
           env:
+            # Proxy name == pod name (zproxy-k3s-0 / zproxy-k3s-1). Must
+            # match the proxy registered server-side by the Ansible role
+            # zabbix_proxy_k3s, else the server rejects the connection.
             - name: ZBX_HOSTNAME
-              value: zproxy-k3s.k3s.majowka.me
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             - name: ZBX_SERVER_HOST
               value: zabbix.majowka.me
             - name: ZBX_SERVER_PORT
               value: "10051"
             - name: ZBX_PROXYMODE
               value: "0"
+            - name: ZBX_PROXYBUFFERMODE
+              value: memory
+            - name: ZBX_PROXYMEMORYBUFFERSIZE
+              value: 96M
             - name: ZBX_CACHESIZE
               value: 64M
             - name: ZBX_HISTORYCACHESIZE
@@ -81,7 +144,7 @@ spec:
           resources:
             requests:
               cpu: 50m
-              memory: 256Mi
+              memory: 352Mi
             limits:
               cpu: 500m
               memory: 512Mi
@@ -103,19 +166,19 @@ spec:
           emptyDir:
             sizeLimit: 1Gi
 ---
-apiVersion: v1
-kind: Service
+# Utrzymuje min. 1 proxy w górze podczas dobrowolnych zakłóceń (drain
+# węzła). Przy 2 replikach + required anti-affinity pody są na osobnych
+# węzłach — PDB blokuje drain drugiego węzła dopóki pierwszy proxy nie
+# wróci Ready, więc grupa proxy nigdy nie spada do zera członków.
+apiVersion: policy/v1
+kind: PodDisruptionBudget
 metadata:
   name: zproxy-k3s
   namespace: monitoring
   labels:
     app: zproxy-k3s
 spec:
-  type: ClusterIP
+  minAvailable: 1
   selector:
-    app: zproxy-k3s
-  ports:
-    - name: zbx-proxy
-      port: 10051
-      targetPort: 10051
-      protocol: TCP
+    matchLabels:
+      app: zproxy-k3s
