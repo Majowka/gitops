@@ -83,12 +83,19 @@ spec:
       # an upstream that returns SERVFAIL (observed: *.tail07246.ts.net on
       # workers with Tailscale accept-dns=true), NSS aborts the lookup chain
       # before reaching the absolute name — Zabbix HTTP_AGENT then fails with
-      # "Could not connect to server" even though nslookup works. ndots:2 keeps
-      # short k8s names like "kubernetes" still resolving via search.
+      # "Could not connect to server" even though nslookup works.
+      #
+      # Why ndots:1 (not 2): with ndots:2, a 1-dot name like "google.com"
+      # or "zabbix.majowka.me" would still trigger search expansion first and
+      # hit the same SERVFAIL trap on *.tail07246.ts.net. ndots:1 means only
+      # single-label names (e.g. "kubernetes") go through search; everything
+      # with at least one dot is queried as absolute first. Zabbix proxy never
+      # resolves bare short names, so the search path is essentially unused —
+      # we pay nothing for the safety.
       dnsConfig:
         options:
           - name: ndots
-            value: "2"
+            value: "1"
       # Hard anti-affinity: the two proxy pods must land on separate nodes
       # so a single node failure can never take the whole proxy group down.
       affinity:
