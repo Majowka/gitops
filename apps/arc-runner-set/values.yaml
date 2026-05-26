@@ -18,6 +18,13 @@ containerMode: {}
 # api.github.com.
 listenerTemplate:
   spec:
+    # CRD validation requires at least one container with a name. ARC controller
+    # fills in the image (matching its own version) when image is omitted, so
+    # the listener auto-tracks controller upgrades. Without this block the
+    # AutoscalingRunnerSet apply fails with:
+    #   spec.listenerTemplate.spec.containers: Required value
+    containers:
+      - name: listener
     dnsConfig:
       nameservers:
         - 8.8.8.8
