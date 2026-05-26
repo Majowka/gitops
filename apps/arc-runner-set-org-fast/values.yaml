@@ -10,26 +10,20 @@ scaleSetLabels:
 minRunners: 2
 maxRunners: 10
 containerMode: {}
-# Listener pod talks only to the GitHub API (external) and the k8s API
-# (resolved via env vars, not DNS). Cluster DNS would only be a liability:
-# any SERVFAIL on a search-domain expansion (e.g. *.tail07246.ts.net via
-# Tailscale accept-dns=true) would stall listener startup. Use external DNS.
-# nodeSelector ensures the listener lands on a node that can egress to
-# api.github.com.
+# Listener uses default ClusterFirst dnsPolicy so it resolves api.github.com
+# through CoreDNS like every other pod — the SERVFAIL search-domain trap that
+# previously required `dnsPolicy: None` was eliminated by ans_playbooks PR #81
+# (worker `accept-dns=false` rollout). Single DNS egress through CoreDNS keeps
+# the architecture consistent — the only pods that intentionally bypass
+# CoreDNS are the registry/apt caches (they MUST hit real upstream, else they
+# would resolve themselves via the worker /etc/hosts overrides and loop).
+#
+# CRD validation requires at least one container with a name; ARC controller
+# fills in the image (matching its own version) when image is omitted.
 listenerTemplate:
   spec:
-    # CRD validation requires at least one container with a name. ARC controller
-    # fills in the image (matching its own version) when image is omitted, so
-    # the listener auto-tracks controller upgrades. Without this block the
-    # AutoscalingRunnerSet apply fails with:
-    #   spec.listenerTemplate.spec.containers: Required value
     containers:
       - name: listener
-    dnsConfig:
-      nameservers:
-        - 8.8.8.8
-        - 8.8.4.4
-    dnsPolicy: None
     nodeSelector:
       internet-access: "true"
 template:
