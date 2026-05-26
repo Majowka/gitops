@@ -77,6 +77,18 @@ spec:
         runAsUser: 1997
         runAsGroup: 1995
         fsGroup: 1995
+      # Lower ndots so absolute FQDNs ({$REGISTRY_URL}=foo.bar.svc.cluster.local)
+      # skip search-domain expansion. Default k8s ndots:5 causes glibc NSS to
+      # try each search domain first; when the kubelet's resolv.conf includes
+      # an upstream that returns SERVFAIL (observed: *.tail07246.ts.net on
+      # workers with Tailscale accept-dns=true), NSS aborts the lookup chain
+      # before reaching the absolute name — Zabbix HTTP_AGENT then fails with
+      # "Could not connect to server" even though nslookup works. ndots:2 keeps
+      # short k8s names like "kubernetes" still resolving via search.
+      dnsConfig:
+        options:
+          - name: ndots
+            value: "2"
       # Hard anti-affinity: the two proxy pods must land on separate nodes
       # so a single node failure can never take the whole proxy group down.
       affinity:
