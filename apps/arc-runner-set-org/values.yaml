@@ -10,6 +10,21 @@ scaleSetLabels:
 minRunners: 2
 maxRunners: 25
 containerMode: {}
+# Listener pod talks only to the GitHub API (external) and the k8s API
+# (resolved via env vars, not DNS). Cluster DNS would only be a liability:
+# any SERVFAIL on a search-domain expansion (e.g. *.tail07246.ts.net via
+# Tailscale accept-dns=true) would stall listener startup. Use external DNS.
+# nodeSelector ensures the listener lands on a node that can egress to
+# api.github.com.
+listenerTemplate:
+  spec:
+    dnsConfig:
+      nameservers:
+        - 8.8.8.8
+        - 8.8.4.4
+    dnsPolicy: None
+    nodeSelector:
+      internet-access: "true"
 template:
   spec:
     serviceAccountName: arc-runner
