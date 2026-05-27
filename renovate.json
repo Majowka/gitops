@@ -12,7 +12,7 @@
   },
   "packageRules": [
     {
-      "description": "Dokładnie tag :latest — nie śledź",
+      "description": "Dokładnie tag :latest — nie śledź (matchCurrentValue matches raw version strings, not semver — config migration from matchCurrentVersion per Renovate v37+)",
       "matchCurrentValue": "^latest$",
       "enabled": false
     },
