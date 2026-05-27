@@ -119,8 +119,11 @@ data:
         }
     }
 ---
-# Main Service — selector app=apt-cache catches all per-zone StatefulSets
-# Clients hit this single endpoint (via DNS rewrite in CoreDNS).
+# Main Service — selector app=apt-cache catches all per-zone StatefulSets.
+# trafficDistribution: PreferClose routes runners to the in-zone pod when
+# CoreDNS rewrite is active (managed by apt-cache-watchdog Deployment).
+# When rewrite is disabled (any zone unhealthy), apt resolves directly to
+# internet mirrors — no cross-zone VPN traffic in either state.
 apiVersion: v1
 kind: Service
 metadata:
@@ -130,6 +133,7 @@ metadata:
     app: apt-cache
 spec:
   type: ClusterIP
+  trafficDistribution: PreferClose
   selector:
     app: apt-cache
   ports:
