@@ -13,7 +13,7 @@
   "packageRules": [
     {
       "description": "Dokładnie tag :latest — nie śledź",
-      "matchCurrentVersion": "^latest$",
+      "matchCurrentValue": "^latest$",
       "enabled": false
     },
     {
