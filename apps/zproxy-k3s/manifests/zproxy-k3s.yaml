@@ -105,6 +105,13 @@ spec:
               mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
+          # 7.0-alpine-latest: intentionally floating within the 7.0 LTS train
+          # to receive upstream security and bug-fix patch releases automatically.
+          # The `7.0` prefix pins the major.minor so incompatible upgrades are
+          # blocked; only patch-level changes are accepted. Renovate tracking is
+          # disabled for this image (renovate.json packageRules) because the
+          # Zabbix project does not publish semver-tagged patch releases — the
+          # rolling *-latest tag is the only reliable update channel.
           image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
           ports:
             - containerPort: 10051
