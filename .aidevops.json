@@ -8,7 +8,7 @@
     "git_workflow": true,
     "code_quality": true,
     "time_tracking": true,
-    "database": true,
+    "database": false,
     "beads": true,
     "sops": false,
     "security": true
