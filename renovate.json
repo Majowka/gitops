@@ -17,12 +17,12 @@
       "enabled": false
     },
     {
-      "description": "Zabbix proxy — floating *-latest tag",
+      "description": "Zabbix proxy — floating *-latest tag; do not track.",
       "matchPackageNames": ["zabbix/zabbix-proxy-sqlite3"],
       "enabled": false
     },
     {
-      "description": "ARC runner image — własny obraz, rebuildowany co tydzień",
+      "description": "ARC runner image — custom image rebuilt weekly; do not track.",
       "matchPackageNames": ["ghcr.io/majowka/arc-runner"],
       "enabled": false
     }
