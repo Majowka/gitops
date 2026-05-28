@@ -114,7 +114,10 @@ data:
         # --from-literal stores literal \n characters, but the JSON patch path
         # interprets \n as real newlines. Always using the JSON patch path ensures
         # consistent data regardless of whether the ConfigMap pre-exists.
-        kubectl create configmap "$CM" -n "$CM_NS"
+        # || true: tolerate EEXIST — if coredns-custom is created between the get
+        # and create (race window under set -e), the script would otherwise abort
+        # before reaching the patch; the subsequent patch provides the real error signal.
+        kubectl create configmap "$CM" -n "$CM_NS" 2>/dev/null || true
       fi
       kubectl patch configmap "$CM" -n "$CM_NS" --type merge \
         --patch "{\"data\":{\"apt-cache.override\":\"${value}\",\"apt-cache.server\":\"\"}}"
