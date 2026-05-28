@@ -163,7 +163,7 @@ spec:
         # which silently broke chown even when running as uid 0 — pods went
         # into Init:CrashLoopBackOff for ~4.5h before this was caught.
         - name: init-data
-          image: busybox:1.38
+          image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command:
             - sh
             - -c
@@ -314,7 +314,7 @@ spec:
         # which silently broke chown even when running as uid 0 — pods went
         # into Init:CrashLoopBackOff for ~4.5h before this was caught.
         - name: init-data
-          image: busybox:1.38
+          image: busybox:1.38@sha256:fd8d9aa63ba2f0982b5304e1ee8d3b90a210bc1ffb5314d980eb6962f1a9715d
           command:
             - sh
             - -c
