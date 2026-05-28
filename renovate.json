@@ -12,7 +12,7 @@
   },
   "packageRules": [
     {
-      "description": "Dokładnie tag :latest — nie śledź. Uses matchCurrentValue (not matchCurrentVersion): 'latest' is a non-semver raw string tag, not a version range. matchCurrentValue compares the raw version/tag string directly; matchCurrentVersion only works with semver ranges and cannot match raw strings like 'latest'. Config migration per Renovate v36+ deprecation of matchCurrentVersion for non-semver patterns (resolves Config Migration Needed in Dependency Dashboard).",
+      "description": "Do not track :latest tag. matchCurrentValue (not matchCurrentVersion) is required for non-semver raw string matching; matchCurrentVersion only works with semver ranges. Renovate v36+ config migration.",
       "matchCurrentValue": "^latest$",
       "enabled": false
     },
