@@ -12,17 +12,17 @@
   },
   "packageRules": [
     {
-      "description": "Dokładnie tag :latest — nie śledź (matchCurrentValue matches raw version strings, not semver — config migration from matchCurrentVersion per Renovate v37+)",
+      "description": "Do not track :latest tag. matchCurrentValue (not matchCurrentVersion) is required for non-semver raw string matching; matchCurrentVersion only works with semver ranges. Renovate v36+ config migration.",
       "matchCurrentValue": "^latest$",
       "enabled": false
     },
     {
-      "description": "Zabbix proxy — floating *-latest tag",
+      "description": "Zabbix proxy — floating *-latest tag; do not track.",
       "matchPackageNames": ["zabbix/zabbix-proxy-sqlite3"],
       "enabled": false
     },
     {
-      "description": "ARC runner image — własny obraz, rebuildowany co tydzień",
+      "description": "ARC runner image — custom image rebuilt weekly; do not track.",
       "matchPackageNames": ["ghcr.io/majowka/arc-runner"],
       "enabled": false
     }
