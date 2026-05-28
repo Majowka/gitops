@@ -72,6 +72,9 @@ spec:
       labels:
         app: zproxy-k3s
     spec:
+      # The proxy doesn't need Kubernetes API access; disable service-account
+      # token automounting so a compromised container can't use the credential.
+      automountServiceAccountToken: false
       securityContext:
         runAsNonRoot: true
         runAsUser: 1997
