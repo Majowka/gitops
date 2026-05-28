@@ -8,7 +8,7 @@
     "git_workflow": true,
     "code_quality": true,
     "time_tracking": true,
-    "database": true,
+    "database": false,
     "beads": true,
     "sops": false,
     "security": true
@@ -19,7 +19,7 @@
     "auto_record_branch_start": true
   },
   "database": {
-    "enabled": true,
+    "enabled": false,
     "schema_path": "schemas",
     "migrations_path": "migrations",
     "seeds_path": "seeds",
