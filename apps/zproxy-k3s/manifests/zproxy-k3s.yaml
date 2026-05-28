@@ -11,11 +11,39 @@
 # zabbix_proxy_k3s — the proxies MUST exist server-side before the pods
 # connect, otherwise the server rejects the unknown proxy.
 #
-# StatefulSet (not Deployment): each Zabbix proxy is a distinct named
-# entity, so the pods need stable identity — pod name == proxy name, fed
-# into ZBX_HOSTNAME via the downward API. podAntiAffinity (required) keeps
-# the two pods on separate nodes so losing one node never takes out the
-# whole group. emptyDir is per-replica, so each proxy has its own sqlite.
+# Architecture: 2× Deployment (one per logical proxy) instead of one
+# StatefulSet. Each Deployment is replicas=1, ZBX_HOSTNAME is set as a
+# hardcoded env value matching the Deployment name. Rationale:
+#
+# - StatefulSet sticky identity blocks self-healing when a worker node
+#   becomes Unreachable: the pod stays "Terminating" forever because the
+#   dead kubelet never acknowledges termination, and StatefulSet refuses
+#   to create a replacement with the same ordinal until the old one is
+#   fully gone. Observed in production 2026-05-28: zproxy-k3s-0 stuck
+#   Terminating ~16h after AZPL Spot eviction of k3s-worker9.
+#
+# - Deployments don't share that constraint. When a pod is unreachable
+#   for tolerationSeconds (30s here, default 300s), the controller marks
+#   it for deletion and the ReplicaSet schedules a replacement on any
+#   healthy node immediately. No "stuck Terminating" wait.
+#
+# - ProxyBufferMode=memory means proxies have no useful persistent state
+#   (sqlite holds only server-synced config, refreshed on startup), so
+#   identity stickiness isn't required for correctness — only the proxy
+#   name needs to stay stable, and that is achieved here via the
+#   Deployment template's hardcoded ZBX_HOSTNAME.
+#
+# - strategy: Recreate forbids the default RollingUpdate behaviour where
+#   K8s would briefly run two pods with the same ZBX_HOSTNAME during a
+#   rollout — the Zabbix server rejects a second connection from the
+#   same proxy name.
+#
+# - podAntiAffinity on shared label app=zproxy-k3s keeps the two pods on
+#   separate nodes regardless of which Deployment owns them, so a single
+#   node failure can never take out the whole proxy group.
+#
+# - emptyDir is per-pod (same as before). On pod replacement the new pod
+#   gets a fresh sqlite, which re-syncs from the server within a minute.
 #
 # initContainer creates the db_data subdir: the Zabbix entrypoint doesn't
 # mkdir its sqlite parent (Z3002 cannot create database) on a fresh volume.
@@ -26,26 +54,42 @@
 # that constant write traffic is what kept corrupting it (malformed image
 # after a hard kill mid-write -> CrashLoop). The RAM buffer is dropped on
 # restart, which is fine here: the emptyDir buffer already is ephemeral.
+
+# Service per proxy instance. Used as the proxy's local_address in the
+# proxy group registration (Ansible role zabbix_proxy_k3s) — even for
+# active proxies the server may direct hosts via local_address in some
+# failover paths. Per-instance ClusterIP gives a stable DNS that survives
+# pod replacement on any node.
 apiVersion: v1
 kind: Service
 metadata:
-  name: zproxy-k3s
+  name: zproxy-k3s-0
   namespace: monitoring
   labels:
     app: zproxy-k3s
-  annotations:
-    # Migracja ClusterIP -> headless zmienia immutable spec.clusterIP —
-    # zwykły apply by się wywalił. Force=true,Replace=true każe ArgoCD
-    # odtworzyć Service (delete+create) przy tym diffie, bez ręcznego
-    # kubectl delete svc. Opcja działa per-resource i tylko gdy jest diff.
-    argocd.argoproj.io/sync-options: Replace=true,Force=true
+    instance: "0"
 spec:
-  # Headless — this is the StatefulSet governing Service. It gives each pod
-  # a stable DNS name (zproxy-k3s-N.zproxy-k3s.monitoring.svc.cluster.local)
-  # used as the proxy's local_address in the proxy group registration.
-  clusterIP: None
   selector:
     app: zproxy-k3s
+    instance: "0"
+  ports:
+    - name: zbx-proxy
+      port: 10051
+      targetPort: 10051
+      protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: zproxy-k3s-1
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+    instance: "1"
+spec:
+  selector:
+    app: zproxy-k3s
+    instance: "1"
   ports:
     - name: zbx-proxy
       port: 10051
@@ -53,24 +97,30 @@ spec:
       protocol: TCP
 ---
 apiVersion: apps/v1
-kind: StatefulSet
+kind: Deployment
 metadata:
-  name: zproxy-k3s
+  name: zproxy-k3s-0
   namespace: monitoring
   labels:
     app: zproxy-k3s
+    instance: "0"
 spec:
-  replicas: 2
-  serviceName: zproxy-k3s
-  # Proxies are independent — no ordering dependency between pods.
-  podManagementPolicy: Parallel
+  replicas: 1
+  strategy:
+    # Recreate: stop the old pod before starting the new one. Default
+    # RollingUpdate would briefly run two pods with the same
+    # ZBX_HOSTNAME and the Zabbix server would reject the duplicate
+    # connection.
+    type: Recreate
   selector:
     matchLabels:
       app: zproxy-k3s
+      instance: "0"
   template:
     metadata:
       labels:
         app: zproxy-k3s
+        instance: "0"
     spec:
       # The proxy doesn't need Kubernetes API access; disable service-account
       # token automounting so a compromised container can't use the credential.
@@ -80,8 +130,8 @@ spec:
         runAsUser: 1997
         runAsGroup: 1995
         fsGroup: 1995
-      # Hard anti-affinity: the two proxy pods must land on separate nodes
-      # so a single node failure can never take the whole proxy group down.
+      # Hard anti-affinity by the shared app label keeps the two proxy
+      # pods on separate nodes regardless of which Deployment owns them.
       affinity:
         podAntiAffinity:
           requiredDuringSchedulingIgnoredDuringExecution:
@@ -89,6 +139,20 @@ spec:
                 matchLabels:
                   app: zproxy-k3s
               topologyKey: kubernetes.io/hostname
+      # Aggressive eviction from unreachable / not-ready nodes (30s vs
+      # the default 300s). Critical for HA: a Spot eviction takes a
+      # worker out of the cluster almost instantly, and we want the
+      # pod re-scheduled on a healthy node within ~1 minute rather
+      # than waiting 5+ for the default node-lifecycle timeout.
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
       initContainers:
         - name: init-data
           image: busybox:1.38
@@ -118,13 +182,130 @@ spec:
               name: zbx-proxy
               protocol: TCP
           env:
-            # Proxy name == pod name (zproxy-k3s-0 / zproxy-k3s-1). Must
-            # match the proxy registered server-side by the Ansible role
-            # zabbix_proxy_k3s, else the server rejects the connection.
+            # Proxy name hardcoded per Deployment. Must match the proxy
+            # registered server-side by the Ansible role zabbix_proxy_k3s,
+            # else the server rejects the connection.
             - name: ZBX_HOSTNAME
-              valueFrom:
-                fieldRef:
-                  fieldPath: metadata.name
+              value: "zproxy-k3s-0"
+            - name: ZBX_SERVER_HOST
+              value: zabbix.majowka.me
+            - name: ZBX_SERVER_PORT
+              value: "10051"
+            - name: ZBX_PROXYMODE
+              value: "0"
+            - name: ZBX_PROXYBUFFERMODE
+              value: memory
+            - name: ZBX_PROXYMEMORYBUFFERSIZE
+              value: 96M
+            - name: ZBX_CACHESIZE
+              value: 64M
+            - name: ZBX_HISTORYCACHESIZE
+              value: 64M
+            - name: ZBX_HISTORYINDEXCACHESIZE
+              value: 16M
+            - name: ZBX_CONFIGFREQUENCY
+              value: "60"
+            - name: ZBX_DATASENDERFREQUENCY
+              value: "1"
+            - name: ZBX_HEARTBEATFREQUENCY
+              value: "60"
+            - name: ZBX_LOGREMOTECOMMANDS
+              value: "0"
+            - name: ZBX_DEBUGLEVEL
+              value: "3"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 352Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zabbix
+          livenessProbe:
+            tcpSocket:
+              port: 10051
+            initialDelaySeconds: 30
+            periodSeconds: 30
+          readinessProbe:
+            tcpSocket:
+              port: 10051
+            initialDelaySeconds: 10
+            periodSeconds: 10
+      volumes:
+        - name: data
+          emptyDir:
+            sizeLimit: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: zproxy-k3s-1
+  namespace: monitoring
+  labels:
+    app: zproxy-k3s
+    instance: "1"
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: zproxy-k3s
+      instance: "1"
+  template:
+    metadata:
+      labels:
+        app: zproxy-k3s
+        instance: "1"
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1997
+        runAsGroup: 1995
+        fsGroup: 1995
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - labelSelector:
+                matchLabels:
+                  app: zproxy-k3s
+              topologyKey: kubernetes.io/hostname
+      tolerations:
+        - key: node.kubernetes.io/unreachable
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+        - key: node.kubernetes.io/not-ready
+          operator: Exists
+          effect: NoExecute
+          tolerationSeconds: 30
+      initContainers:
+        - name: init-data
+          image: busybox:1.38
+          command:
+            - sh
+            - -c
+            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps && chown -R 1997:1995 /var/lib/zabbix && chmod -R u+rwX /var/lib/zabbix
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            runAsNonRoot: false
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/zabbix
+      containers:
+        - name: zabbix-proxy
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          ports:
+            - containerPort: 10051
+              name: zbx-proxy
+              protocol: TCP
+          env:
+            - name: ZBX_HOSTNAME
+              value: "zproxy-k3s-1"
             - name: ZBX_SERVER_HOST
               value: zabbix.majowka.me
             - name: ZBX_SERVER_PORT
@@ -177,9 +358,11 @@ spec:
             sizeLimit: 1Gi
 ---
 # Utrzymuje min. 1 proxy w górze podczas dobrowolnych zakłóceń (drain
-# węzła). Przy 2 replikach + required anti-affinity pody są na osobnych
-# węzłach — PDB blokuje drain drugiego węzła dopóki pierwszy proxy nie
-# wróci Ready, więc grupa proxy nigdy nie spada do zera członków.
+# węzła). Selektor `app: zproxy-k3s` dopasowuje pody z obu Deploymentów,
+# więc minAvailable=1 zapewnia że nigdy nie stracimy obu jednocześnie
+# przy planned maintenance. PodAntiAffinity wymusza by były na osobnych
+# nodach, więc drain pojedynczego node zawsze może wytrącić co najwyżej
+# jednego z dwóch.
 apiVersion: policy/v1
 kind: PodDisruptionBudget
 metadata:
