@@ -164,6 +164,20 @@ spec:
             runAsUser: 0
             runAsGroup: 0
             runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
           volumeMounts:
             - name: data
               mountPath: /var/lib/zabbix
@@ -293,6 +307,20 @@ spec:
             runAsUser: 0
             runAsGroup: 0
             runAsNonRoot: false
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            seccompProfile:
+              type: RuntimeDefault
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 10m
+              memory: 16Mi
+            limits:
+              cpu: 100m
+              memory: 32Mi
           volumeMounts:
             - name: data
               mountPath: /var/lib/zabbix
