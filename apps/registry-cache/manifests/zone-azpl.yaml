@@ -29,6 +29,10 @@ spec:
                     values: ["azpl"]
       containers:
         - name: registry
+          # registry:3 verified on Docker Hub (digest sha256:6ad90ba0..., amd64/linux).
+          # Digest-pinned for full reproducibility on this canary zone (azpl) per PR #20
+          # review discussion. Tag registry:3 exists in library/registry (official image).
+          # Non-azpl zones intentionally use mutable tag pending global rollout (PR #18).
           image: registry:3@sha256:6ad90ba0078c20cbdaa26b08aa2005a6ba409234f50f485d25eadd604704511e
           env:
             - name: REGISTRY_PROXY_REMOTEURL
