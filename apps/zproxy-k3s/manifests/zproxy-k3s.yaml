@@ -154,16 +154,24 @@ spec:
           effect: NoExecute
           tolerationSeconds: 30
       initContainers:
+        # fsGroup: 1995 on the pod's securityContext makes kubelet chown the
+        # emptyDir mount to gid 1995 with g+rwX before any container runs, so
+        # the init container can mkdir as the non-root pod user (1997:1995)
+        # without escalating to root. The earlier root+chown+chmod was a
+        # leftover from before fsGroup was set; it stopped working after the
+        # b66d3e6 security hardening dropped CAP_CHOWN (capabilities: drop ALL),
+        # which silently broke chown even when running as uid 0 — pods went
+        # into Init:CrashLoopBackOff for ~4.5h before this was caught.
         - name: init-data
           image: busybox:1.38
           command:
             - sh
             - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps && chown -R 1997:1995 /var/lib/zabbix && chmod -R u+rwX /var/lib/zabbix
+            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
           securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-            runAsNonRoot: false
+            runAsNonRoot: true
+            runAsUser: 1997
+            runAsGroup: 1995
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             seccompProfile:
@@ -297,16 +305,24 @@ spec:
           effect: NoExecute
           tolerationSeconds: 30
       initContainers:
+        # fsGroup: 1995 on the pod's securityContext makes kubelet chown the
+        # emptyDir mount to gid 1995 with g+rwX before any container runs, so
+        # the init container can mkdir as the non-root pod user (1997:1995)
+        # without escalating to root. The earlier root+chown+chmod was a
+        # leftover from before fsGroup was set; it stopped working after the
+        # b66d3e6 security hardening dropped CAP_CHOWN (capabilities: drop ALL),
+        # which silently broke chown even when running as uid 0 — pods went
+        # into Init:CrashLoopBackOff for ~4.5h before this was caught.
         - name: init-data
           image: busybox:1.38
           command:
             - sh
             - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps && chown -R 1997:1995 /var/lib/zabbix && chmod -R u+rwX /var/lib/zabbix
+            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
           securityContext:
-            runAsUser: 0
-            runAsGroup: 0
-            runAsNonRoot: false
+            runAsNonRoot: true
+            runAsUser: 1997
+            runAsGroup: 1995
             allowPrivilegeEscalation: false
             readOnlyRootFilesystem: true
             seccompProfile:
