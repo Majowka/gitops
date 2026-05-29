@@ -13,6 +13,14 @@ read when working in this repository. Use this for:
 - API design rules, data models, naming conventions
 - Integration details (third-party services, deployment targets)
 
+## Setup
+
+The `.agents/commands` symlink is excluded from git (see `.gitignore`) and
+created locally by running `aidevops init` (see [aidevops.sh](https://aidevops.sh)).
+The `.windsurf/workflows` symlink (relative: `../.agents/commands`) will work
+once `.agents/commands` is created by `aidevops init`. Collaborators must run
+`aidevops init` once after cloning.
+
 ## Adding Agents
 
 Create `.md` files in this directory for domain-specific context:
@@ -52,5 +60,7 @@ prompts:
 - Validate all external input (user input, webhook payloads, API responses)
 - Pin third-party GitHub Actions to SHA hashes, not branch tags
 - Run `aidevops security audit` periodically to check security posture
-- See `~/.aidevops/agents/tools/security/prompt-injection-defender.md` for
-  the framework's prompt injection defense patterns
+- Prompt injection defense patterns are documented in the global aidevops
+  install at `~/.aidevops/agents/tools/security/prompt-injection-defender.md`
+  (requires `aidevops init` or global install; see [aidevops.sh](https://aidevops.sh))
+

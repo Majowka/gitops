@@ -1,0 +1,3 @@
+# aidevops local symlink - created by 'aidevops init', points to global install
+# This repo is PUBLIC - never commit secrets or absolute local paths
+.agents/commands

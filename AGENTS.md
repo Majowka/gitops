@@ -4,22 +4,28 @@
 
 ## Quick Reference
 
-- **Build**: `# TODO: add build command`
-- **Test**: `# TODO: add test command`
-- **Deploy**: `# TODO: add deploy command`
+- **Build**: `kubectl apply --dry-run=client -f apps/`
+- **Test**: `kustomize build bootstrap/ | kubectl apply --dry-run=client -f -`
+- **Deploy**: Managed by ArgoCD — push to main and ArgoCD syncs automatically
 
 ## Project Overview
 
-<!-- Brief description of what this project does and why it exists. -->
+GitOps source of truth for Kubernetes manifests across the VRTX homelab
+infrastructure. ArgoCD watches this repo and syncs all application state.
+This repo is **public** — no secrets should ever be committed here; use
+External Secrets Operator + Infisical for secret injection.
 
 ## Architecture
 
-<!-- Key architectural decisions, tech stack, directory structure. -->
+- `apps/` — ArgoCD Application manifests per service
+- `bootstrap/` — cluster bootstrap (ArgoCD install, app-of-apps)
+- Direct `kubectl apply` is discouraged — let ArgoCD handle sync
 
 ## Conventions
 
 - Commits: [Conventional Commits](https://www.conventionalcommits.org/)
 - Branches: `feature/`, `bugfix/`, `hotfix/`, `refactor/`, `chore/`
+- **No secrets** — this repo is public; all secrets via ESO + Infisical
 
 ## Key Files
 
@@ -27,6 +33,8 @@
 |------|---------|
 | `.agents/AGENTS.md` | Project-specific agent instructions |
 | `TODO.md` | Task tracking |
-| `CHANGELOG.md` | Version history |
+| `apps/` | ArgoCD Application definitions |
+| `bootstrap/` | Cluster bootstrap manifests |
 
 <!-- AI-CONTEXT-END -->
+

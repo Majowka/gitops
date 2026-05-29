@@ -36,7 +36,7 @@ Format: `- [ ] tNNN Description @owner #tag ~estimate risk:level logged:date`
 - `blocks:t003` - This task blocks t003
 
 **Time fields:**
-- `~estimate` - AI-assisted execution time (~15m trivial, ~30m small, ~1h medium, ~2h large, ~4h major — see `reference/planning-detail.md`)
+- `~estimate` - AI-assisted execution time (~15m trivial, ~30m small, ~1h medium, ~2h large, ~4h major)
 - `actual:` - Actual active time spent (from session-time-helper.sh)
 - `logged:` - When task was added
 - `started:` - When branch was created
@@ -48,7 +48,7 @@ Format: `- [ ] tNNN Description @owner #tag ~estimate risk:level logged:date`
 - `risk:high` - Engaged: stay present, test thoroughly, potential regressions
 
 <!--TOON:meta{version,format,updated}:
-1.1,todo-md+toon,{{DATE}}
+1.1,todo-md+toon,2026-05-29
 -->
 
 ## Ready
@@ -98,3 +98,4 @@ Format: `- [ ] tNNN Description @owner #tag ~estimate risk:level logged:date`
 <!--TOON:summary{total,ready,pending,in_progress,in_review,done,declined,total_est,total_actual}:
 0,0,0,0,0,0,0,,
 -->
+
