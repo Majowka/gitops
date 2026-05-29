@@ -23,7 +23,7 @@
     "schema_path": "schemas",
     "migrations_path": "migrations",
     "seeds_path": "seeds",
-    "auto_generate_migration": true
+    "auto_generate_migration": false
   },
   "beads": {
     "enabled": true,
