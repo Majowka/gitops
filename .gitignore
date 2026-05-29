@@ -1,0 +1,4 @@
+# aidevops local symlinks - created by 'aidevops init', point to global install
+# This repo is PUBLIC - never commit secrets or absolute local paths
+.agents/commands
+.windsurf/workflows
