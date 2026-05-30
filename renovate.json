@@ -5,10 +5,15 @@
   "prHourlyLimit": 2,
   "prConcurrentLimit": 5,
   "argocd": {
-    "fileMatch": ["apps/.*/Application\\.yaml$"]
+    "managerFilePatterns": [
+      "/apps/.*/Application\\.yaml$/"
+    ]
   },
   "kubernetes": {
-    "fileMatch": ["apps/.*/manifests/.*\\.yaml$", "apps/.*/values\\.yaml$"]
+    "managerFilePatterns": [
+      "/apps/.*/manifests/.*\\.yaml$/",
+      "/apps/.*/values\\.yaml$/"
+    ]
   },
   "packageRules": [
     {
