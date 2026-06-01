@@ -176,6 +176,8 @@ template:
             value: "120"
           - name: BUILDX_CONFIG
             value: /home/runner/.docker/buildx
+          - name: DOCKER_CONFIG
+            value: /home/runner/_work/.docker
         volumeMounts:
           - name: dind-externals
             mountPath: /home/runner/externals
