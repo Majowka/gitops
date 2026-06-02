@@ -54,11 +54,12 @@ data:
             archive.ubuntu.com      ubuntu.task.gda.pl;
             security.ubuntu.com     ubuntu.task.gda.pl;
             ports.ubuntu.com        ubuntu.task.gda.pl;
-            # deb.debian.org falls through to default ($host) — CDN (Fastly)
-            # serves both /debian/ and /debian-security/. No Polish mirror
-            # replicates the Debian security archive, so ftp.task.gda.pl
-            # cannot be used here. nginx resolver uses 1.1.1.1 (bypasses
-            # CoreDNS rewrite, no loop). HTTP 200 confirmed, no redirect.
+            # deb.debian.org — intentionally no explicit entry; default $host
+            # maps it to itself (Fastly CDN serves /debian/ and
+            # /debian-security/). No Polish mirror replicates the Debian
+            # security archive, so ftp.task.gda.pl cannot be used.
+            # nginx resolver uses 1.1.1.1 (bypasses CoreDNS rewrite, no
+            # loop). HTTP 200 confirmed, no redirect.
             security.debian.org     deb.debian.org;
         }
 
