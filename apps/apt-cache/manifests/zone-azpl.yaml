@@ -19,6 +19,8 @@ spec:
       labels:
         app: apt-cache
         zone: azpl
+      annotations:
+        reloader.stakater.com/auto: "true"
     spec:
       dnsPolicy: None
       dnsConfig:
