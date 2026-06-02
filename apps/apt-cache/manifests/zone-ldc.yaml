@@ -7,6 +7,8 @@ metadata:
   labels:
     app: apt-cache
     zone: ldc
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   serviceName: apt-cache-ldc
   replicas: 1
@@ -19,8 +21,6 @@ spec:
       labels:
         app: apt-cache
         zone: ldc
-      annotations:
-        reloader.stakater.com/auto: "true"
     spec:
       dnsPolicy: None
       dnsConfig:
