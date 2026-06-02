@@ -7,6 +7,8 @@ metadata:
   labels:
     app: apt-cache
     zone: vrtx
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   serviceName: apt-cache-vrtx
   replicas: 1

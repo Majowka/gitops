@@ -7,6 +7,8 @@ metadata:
   labels:
     app: apt-cache
     zone: azpl
+  annotations:
+    reloader.stakater.com/auto: "true"
 spec:
   serviceName: apt-cache-azpl
   replicas: 1
