@@ -176,6 +176,14 @@ template:
             value: "120"
           - name: BUILDX_CONFIG
             value: /home/runner/.docker/buildx
+          # DOCKER_CONFIG points to the shared work emptyDir rather than a
+          # runner-only isolated volume. Copilot raised a credentials-isolation
+          # concern (PR #67 discussion_r3335210483), but dind is privileged
+          # and shares the Docker socket/Pod trust boundary with the runner,
+          # so a separate emptyDir does not materially improve confidentiality
+          # in this setup. The _work path avoids permission-denied
+          # errors caused by the buildx-config volume creating /home/runner/.docker
+          # as root:root. Keeping _work/.docker for simplicity. (Resolves #74)
           - name: DOCKER_CONFIG
             value: /home/runner/_work/.docker
         volumeMounts:
