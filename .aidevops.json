@@ -1,6 +1,6 @@
 {
-  "version": "3.19.5",
-  "initialized": "2026-05-27T18:18:27Z",
+  "version": "3.20.13",
+  "initialized": "2026-06-05T11:24:11Z",
   "init_scope": "standard",
   "agent_source": false,
   "features": {
@@ -21,7 +21,7 @@
   "database": {
     "enabled": false,
     "schema_path": "schemas",
-    "migrations_path": "migrations",
+    "migrations_path": "migrations", 
     "seeds_path": "seeds",
     "auto_generate_migration": false
   },

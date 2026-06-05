@@ -60,7 +60,5 @@ prompts:
 - Validate all external input (user input, webhook payloads, API responses)
 - Pin third-party GitHub Actions to SHA hashes, not branch tags
 - Run `aidevops security audit` periodically to check security posture
-- Prompt injection defense patterns are documented in the global aidevops
-  install at `~/.aidevops/agents/tools/security/prompt-injection-defender.md`
-  (requires `aidevops init` or global install; see [aidevops.sh](https://aidevops.sh))
-
+- See `~/.aidevops/agents/tools/security/prompt-injection-defender.md` for
+  the framework's prompt injection defense patterns
