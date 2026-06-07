@@ -17,10 +17,9 @@ name: Maintainer Gate
 # To enforce: add "maintainer-gate" as a required status check in
 # GitHub branch protection settings for this repo.
 #
-# Pinning options:
-#   @main           ← auto-update; what this template uses by default
-#   @v3.9.0         ← pin to a specific aidevops version for stability
-#                     (bump via aidevops sync-workflows after upgrades)
+# Pinning policy:
+#   Downstream repos pin Majowka/.github reusable workflows to a reviewed commit
+#   instead of following a mutable branch ref.
 
 # Permissions ceiling for downstream repos with default_workflow_permissions: read.
 # Reusable workflow job-level permissions cannot exceed the caller's ceiling.
@@ -40,5 +39,4 @@ on:
 
 jobs:
   gate:
-    uses: Majowka/.github/.github/workflows/maintainer-gate-reusable.yml@main
-    secrets: inherit
+    uses: Majowka/.github/.github/workflows/maintainer-gate-reusable.yml@2cef1633dd6c0ed256d5ad10e8c0e8105f2051de

@@ -22,10 +22,9 @@ name: Review Bot Gate
 # are rate-limited). Set "wait" to block merge until bots come off rate-limit.
 # See: .agents/reference/repos-json-fields.md "review_gate" field.
 #
-# Pinning options:
-#   @main           ← auto-update; what this template uses by default
-#   @v3.9.0         ← pin to a specific aidevops version for stability
-#                     (bump via aidevops sync-workflows after upgrades)
+# Pinning policy:
+#   Downstream repos pin Majowka/.github reusable workflows to a reviewed commit
+#   instead of following a mutable branch ref.
 
 # Permissions ceiling for downstream repos with default_workflow_permissions: read.
 # Reusable workflow job-level permissions cannot exceed the caller's ceiling.
@@ -57,5 +56,5 @@ concurrency:
 
 jobs:
   gate:
-    uses: Majowka/.github/.github/workflows/review-bot-gate-reusable.yml@main
-    secrets: inherit
+    if: github.event_name != 'issue_comment' || github.event.issue.pull_request
+    uses: Majowka/.github/.github/workflows/review-bot-gate-reusable.yml@2cef1633dd6c0ed256d5ad10e8c0e8105f2051de

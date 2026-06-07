@@ -14,10 +14,9 @@ name: Issue Sync - Bi-directional TODO.md ↔ GitHub Issues
 #   aidevops sync-workflows        # preview resync plan
 #   aidevops sync-workflows --apply
 #
-# Pinning options:
-#   @main           ← auto-update; what this template uses by default
-#   @v3.9.0         ← pin to a specific aidevops version for stability
-#                     (bump via aidevops sync-workflows after upgrades)
+# Pinning policy:
+#   Downstream repos pin Majowka/.github reusable workflows to a reviewed commit
+#   instead of following a mutable branch ref.
 
 # Permissions ceiling for downstream repos with default_workflow_permissions: read.
 # Reusable workflow job-level permissions cannot exceed the caller's ceiling.
@@ -55,7 +54,7 @@ on:
 
 jobs:
   sync:
-    uses: Majowka/.github/.github/workflows/issue-sync-reusable.yml@main
+    uses: Majowka/.github/.github/workflows/issue-sync-reusable.yml@2cef1633dd6c0ed256d5ad10e8c0e8105f2051de
     # GH#20976: `secrets: inherit` only works within the same GitHub account/org.
     # Cross-account consumers (every downstream user) receive empty values for any
     # caller-repo secret when using `secrets: inherit` against a cross-account
