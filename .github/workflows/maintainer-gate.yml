@@ -39,5 +39,5 @@ on:
 
 jobs:
   gate:
-    uses: Majowka/.github/.github/workflows/maintainer-gate-reusable.yml@9022fe82cd177ccf58d66025e95cb095103756d6
+    uses: Majowka/.github/.github/workflows/maintainer-gate-reusable.yml@268d88766c7a6cf9400d9c966c193a5543a43f2a
     secrets: inherit
