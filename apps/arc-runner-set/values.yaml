@@ -96,6 +96,9 @@ template:
               http = true
               insecure = true
 
+            # mirror.gcr.io is Google's Docker Hub mirror. Do not mirror
+            # registry "gcr.io" here: real GCR image pulls must go directly
+            # to gcr.io instead of the Docker Hub mirror cache.
             [registry."mirror.gcr.io"]
               mirrors = ["registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
 
