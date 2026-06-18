@@ -89,6 +89,20 @@ template:
             }
             EOF
             cat > /buildx-config/buildkitd.toml <<EOF
+            [registry."docker.io"]
+              mirrors = ["registry-cache-${ZONE}.arc-runners.svc.cluster.local:5000"]
+
+            [registry."registry-cache-${ZONE}.arc-runners.svc.cluster.local:5000"]
+              http = true
+              insecure = true
+
+            [registry."mirror.gcr.io"]
+              mirrors = ["registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
+
+            [registry."registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
+              http = true
+              insecure = true
+
             [registry."mcr.microsoft.com"]
               mirrors = ["registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
 
