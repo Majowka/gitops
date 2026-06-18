@@ -96,6 +96,8 @@ template:
               http = true
               insecure = true
 
+            # registry-cache-gcr proxies mirror.gcr.io, Google's Docker Hub mirror.
+            # Do not use it for gcr.io; actual GCR images must resolve upstream.
             [registry."mirror.gcr.io"]
               mirrors = ["registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local:5000"]
 
@@ -142,6 +144,7 @@ template:
             CACHE_HOST="registry-cache-gcr-${ZONE}.arc-runners.svc.cluster.local"
             CACHE_IP=$(getent hosts "$CACHE_HOST" 2>/dev/null | sed 's/[[:space:]].*//')
             if [ -n "$CACHE_IP" ] && wget -q --spider --timeout=2 "http://${CACHE_HOST}:5000/v2/" 2>/dev/null; then
+              # Only mirror.gcr.io is backed by registry-cache-gcr; do not override gcr.io.
               echo "${CACHE_IP} mirror.gcr.io" >> /etc/hosts
             fi
             MCR_CACHE_HOST="registry-cache-mcr-${ZONE}.arc-runners.svc.cluster.local"

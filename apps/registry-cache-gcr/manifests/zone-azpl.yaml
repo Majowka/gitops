@@ -1,5 +1,6 @@
 ---
-# AZPL-local replica (Azure Poland Central) of registry-cache-gcr. Pulled by ARC runners scheduled
+# AZPL-local replica (Azure Poland Central) of registry-cache-gcr for
+# mirror.gcr.io only; actual gcr.io pulls must resolve upstream. Pulled by ARC runners scheduled
 # on LDC nodes — without this they'd traverse Tailscale across DCs to hit
 # the VRTX pod.
 apiVersion: apps/v1

@@ -1,6 +1,7 @@
 ---
-# Pull-through cache for mcr.microsoft.com. Used by ARC runners for .NET /
-# Google mirror (mirror.gcr.io) — covers most public k8s.io and gcr.io images. One pod, pinned to a VRTX node — per-DC
+# Pull-through cache for mirror.gcr.io, Google's Docker Hub mirror.
+# This is intentionally not a gcr.io mirror; actual GCR image pulls must resolve
+# upstream. One pod, pinned to a VRTX node — per-DC
 # topology (LDC fallback) lives in a separate Application that adds extra
 # Services and node-labelers.
 #
