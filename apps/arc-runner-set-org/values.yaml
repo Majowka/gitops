@@ -162,6 +162,12 @@ template:
             mountPath: /etc/docker
           - name: zone-info
             mountPath: /zone-info
+          # dind daemon mounts the runner externals (node20/node24) so that
+          # container-based jobs get them bind-mounted at /__e. Without this,
+          # `container:` jobs fail with `/__e/node24/bin/node: no such file or
+          # directory` because the dind daemon's /home/runner/externals is empty.
+          - name: dind-externals
+            mountPath: /home/runner/externals
     containers:
       - name: runner
         image: ghcr.io/majowka/arc-runner:latest
