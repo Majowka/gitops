@@ -83,11 +83,23 @@ spec:
                   fi
                 done
               }
-              clean
               while true; do
-                sleep 300
                 clean
+                sleep 300
               done
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: "10m"
+              memory: "16Mi"
+            limits:
+              cpu: "100m"
+              memory: "64Mi"
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry
