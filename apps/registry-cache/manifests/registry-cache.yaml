@@ -69,6 +69,13 @@ spec:
               mountPath: /var/lib/registry
         - name: gc
           image: registry:3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
           command:
             - /bin/sh
             - -c
@@ -76,9 +83,13 @@ spec:
               sleep 60
               while true; do
                 echo "[gc] starting garbage-collect at $(date -u)"
-                registry garbage-collect /etc/distribution/config.yml --delete-untagged=false
-                echo "[gc] done, sleeping 1h"
-                sleep 3600
+                if registry garbage-collect /etc/distribution/config.yml --delete-untagged=false; then
+                  echo "[gc] done, sleeping 1h"
+                  sleep 3600
+                else
+                  echo "[gc] gc failed, retrying in 60s" >&2
+                  sleep 60
+                fi
               done
           env:
             - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
