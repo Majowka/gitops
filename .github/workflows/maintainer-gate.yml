@@ -42,4 +42,7 @@ jobs:
     uses: Majowka/.github/.github/workflows/maintainer-gate-reusable.yml@88fceecc455c85ad5fb07881046fcf27e0585b8d
     with:
       runner: builder-org-fast
-    secrets: inherit
+    # No secrets: block — the reusable workflow declares no custom secrets
+    # in its on.workflow_call.secrets contract; GITHUB_TOKEN is provided
+    # automatically by GitHub to all called workflows and does not need
+    # to be forwarded via secrets: inherit (zizmor secrets-inherit, GH#87).
