@@ -1,7 +1,7 @@
 controllerServiceAccount:
   name: arc-gha-rs-controller
   namespace: arc-systems
-githubConfigUrl: "https://github.com/kamcio2603/mesh-manager"
+githubConfigUrl: "https://github.com/Majowka/mesh-manager"
 githubConfigSecret: "arc-github-secret"
 runnerScaleSetName: "k3s-arc"
 scaleSetLabels:
