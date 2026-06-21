@@ -1,6 +1,9 @@
 ---
 # Pull-through cache for mcr.microsoft.com. Used by ARC runners for .NET /
 # Microsoft container images. One pod, pinned to a VRTX node — per-DC
+#
+# gc sidecar: runs `registry garbage-collect` every hour to evict corrupted or
+# zero-byte blobs before they cause CI failures (short read: unexpected EOF).
 # topology (LDC fallback) lives in a separate Application that adds extra
 # Services and node-labelers.
 #
@@ -64,6 +67,32 @@ spec:
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry
+        - name: gc
+          image: registry:3
+          command:
+            - /bin/sh
+            - -c
+            - |
+              sleep 60
+              while true; do
+                echo "[gc] starting garbage-collect at $(date -u)"
+                registry garbage-collect /etc/distribution/config.yml --delete-untagged=false
+                echo "[gc] done, sleeping 1h"
+                sleep 3600
+              done
+          env:
+            - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
+              value: /var/lib/registry
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
+          resources:
+            requests:
+              cpu: 10m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
       volumes:
         - name: registry-data
           emptyDir:
