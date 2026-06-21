@@ -65,8 +65,7 @@ spec:
             - sh
             - -c
             - |
-              while true; do
-                sleep 3600
+              clean() {
                 find /var/lib/registry/docker/registry/v2/repositories/ \
                   -path '*/_layers/sha256/*/link' 2>/dev/null | \
                 while read link; do
@@ -79,6 +78,11 @@ spec:
                     rm -f "$link"
                   fi
                 done
+              }
+              clean
+              while true; do
+                sleep 300
+                clean
               done
           volumeMounts:
             - name: registry-data
