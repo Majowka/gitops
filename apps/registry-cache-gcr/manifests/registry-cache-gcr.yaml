@@ -65,6 +65,30 @@ spec:
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry
+        - name: orphan-cleaner
+          image: busybox
+          command:
+            - sh
+            - -c
+            - |
+              while true; do
+                sleep 3600
+                find /var/lib/registry/docker/registry/v2/repositories/ \
+                  -path '*/_layers/sha256/*/link' 2>/dev/null | \
+                while read link; do
+                  digest=$(basename $(dirname "$link"))
+                  prefix=${digest:0:2}
+                  data="/var/lib/registry/docker/registry/v2/blobs/sha256/${prefix}/${digest}/data"
+                  if [ ! -f "$data" ]; then
+                    repo=$(echo "$link" | sed 's|.*/repositories/||;s|/_layers.*||')
+                    echo "$(date -u +%FT%TZ) orphan-cleaner: removed ${repo}@${digest}"
+                    rm -f "$link"
+                  fi
+                done
+              done
+          volumeMounts:
+            - name: registry-data
+              mountPath: /var/lib/registry
       volumes:
         - name: registry-data
           emptyDir:
