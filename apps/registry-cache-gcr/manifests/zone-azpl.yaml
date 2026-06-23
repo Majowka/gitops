@@ -37,8 +37,6 @@ spec:
           env:
             - name: REGISTRY_PROXY_REMOTEURL
               value: https://mirror.gcr.io
-            - name: REGISTRY_PROXY_TTL
-              value: "24h"
             - name: REGISTRY_STORAGE_FILESYSTEM_ROOTDIRECTORY
               value: /var/lib/registry
             - name: REGISTRY_HTTP_ADDR
