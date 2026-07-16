@@ -58,6 +58,13 @@ spec:
               port: 5000
             initialDelaySeconds: 5
             periodSeconds: 10
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 1000m
+              memory: 256Mi
           volumeMounts:
             - name: registry-data
               mountPath: /var/lib/registry
