@@ -20,12 +20,18 @@ containerMode: {}
 #
 # CRD validation requires at least one container with a name; ARC controller
 # fills in the image (matching its own version) when image is omitted.
+#
+# No nodeSelector: the listener must be schedulable on any zone. It was
+# pinned to nodes labelled internet-access=true (VRTX-only) from the same
+# 2026-05-26 DNS fix — when VRTX went down on 2026-07-24 all three listeners
+# (this one, arc-runner-set, arc-runner-set-org) sat Pending for ~4.5h with
+# zero capacity to schedule new runners, since only VRTX carried that label.
+# All zones have direct internet egress (verified from a running runner pod
+# on an LDC node), so the constraint was never load-bearing.
 listenerTemplate:
   spec:
     containers:
       - name: listener
-    nodeSelector:
-      internet-access: "true"
 template:
   spec:
     serviceAccountName: arc-runner
