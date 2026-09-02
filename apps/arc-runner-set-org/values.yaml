@@ -8,7 +8,7 @@ scaleSetLabels:
   - self-hosted
   - builder-org
 minRunners: 2
-maxRunners: 25
+maxRunners: 6
 containerMode: {}
 # Listener uses default ClusterFirst dnsPolicy so it resolves api.github.com
 # through CoreDNS like every other pod — the SERVFAIL search-domain trap that
