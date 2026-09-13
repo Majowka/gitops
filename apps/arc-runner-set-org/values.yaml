@@ -135,6 +135,8 @@ template:
           requests:
             cpu: "1000m"
             memory: "1500Mi"
+          limits:
+            memory: "1500Mi"
         env:
           - name: DOCKER_GROUP_GID
             value: "123"
@@ -197,6 +199,8 @@ template:
         resources:
           requests:
             cpu: "2000m"
+            memory: "2500Mi"
+          limits:
             memory: "2500Mi"
         env:
           - name: DOCKER_HOST
