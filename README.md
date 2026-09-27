@@ -30,7 +30,8 @@ intervention is expected (e.g. Traefik during config experiments).
 
 - k3s OS-level baseline (Ansible `roles/bootstrap`, kernel sysctl, Tailscale)
 - k3s addons that ship pre-rendered in `/var/lib/rancher/k3s/server/manifests/`
-  (metrics-server, coredns-custom — will be migrated in a later phase)
+  (coredns-custom — will be migrated in a later phase; metrics-server already
+  moved to `apps/metrics-server`, disabled in k3s via `disable: [metrics-server]`)
 - Secrets — `External Secrets Operator` will pull from Infisical (TBD)
 
 ## Related repos
