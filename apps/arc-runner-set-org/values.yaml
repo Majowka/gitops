@@ -7,9 +7,10 @@ runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
-# minRunners 1 (was 2): each warm idle pod now reserves 2 CPU, so the idle
-# pool holds 2 CPU instead of 6. The cold-start cost (pod scheduling + image
-# pull + registration) only hits the first job after an idle period.
+# minRunners 1 (was 2): each warm idle pod now reserves 2.5 CPU, so the
+# idle pool holds 2.5 CPU instead of 6. Only the first job after an idle
+# period lands on the warm runner; any concurrent or later job still waits
+# for a new pod to start (scheduling + image pull + registration), as today.
 # Source: Majowka/mesh-manager#5295 (epic), docs/ci/arc-resource-profiling.md.
 minRunners: 1
 maxRunners: 15
@@ -142,10 +143,12 @@ template:
         #
         # CPU: dind does the real work (every `container:` job, `services:`
         # and docker build runs inside it). Observed dind medians 1150-2170m,
-        # max ~2700m on Docker-heavy classes, so the request is 1500m (was
-        # 1000m) and the runner request drops to 500m (runner observed
-        # 64-1300m). Pod total 3 CPU -> 2 CPU. Deliberately NO CPU limit on
-        # either container: bursting above the request is intended.
+        # max ~2700m on Docker-heavy classes, so the request is 2000m (was
+        # 1000m): it covers the typical Docker-heavy median, so CFS CPU
+        # shares under node contention match real use. The runner request
+        # drops to 500m (runner observed 64-1300m). Pod total 3 -> 2.5 CPU.
+        # Deliberately NO CPU limit on either container: bursting above the
+        # request (e.g. to the ~2700m peaks) is intended.
         #
         # Memory: kept at 1500Mi (request = limit). Observed dind max was
         # 512Mi (bridge-stack smoke), but on these nodes (Ubuntu 24.04,
@@ -157,7 +160,7 @@ template:
         # to give 2x headroom; an OOM here kills the job's whole Docker stack.
         resources:
           requests:
-            cpu: "1500m"
+            cpu: "2000m"
             memory: "1500Mi"
           limits:
             memory: "1500Mi"
