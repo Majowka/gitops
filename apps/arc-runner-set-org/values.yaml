@@ -7,7 +7,12 @@ runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
-minRunners: 2
+# minRunners 1 (was 2): each warm idle pod now reserves 2.5 CPU, so the
+# idle pool holds 2.5 CPU instead of 6. Only the first job after an idle
+# period lands on the warm runner; any concurrent or later job still waits
+# for a new pod to start (scheduling + image pull + registration), as today.
+# Source: Majowka/mesh-manager#5295 (epic), docs/ci/arc-resource-profiling.md.
+minRunners: 1
 maxRunners: 15
 containerMode: {}
 # Listener uses default ClusterFirst dnsPolicy so it resolves api.github.com
@@ -131,9 +136,31 @@ template:
         restartPolicy: Always
         securityContext:
           privileged: true
+        # Resource sizing (runner + dind) is based on 10 live-profiled
+        # mesh-manager CI runs, 2026-09-24 (Majowka/mesh-manager#5295, #5485,
+        # #5486; evidence in mesh-manager docs/ci/arc-resource-profiling.md):
+        # https://github.com/Majowka/mesh-manager/blob/develop/docs/ci/arc-resource-profiling.md
+        #
+        # CPU: dind does the real work (every `container:` job, `services:`
+        # and docker build runs inside it). Observed dind medians 1150-2170m,
+        # max ~2700m on Docker-heavy classes, so the request is 2000m (was
+        # 1000m): it covers the typical Docker-heavy median, so CFS CPU
+        # shares under node contention match real use. The runner request
+        # drops to 500m (runner observed 64-1300m). Pod total 3 -> 2.5 CPU.
+        # Deliberately NO CPU limit on either container: bursting above the
+        # request (e.g. to the ~2700m peaks) is intended.
+        #
+        # Memory: kept at 1500Mi (request = limit). Observed dind max was
+        # 512Mi (bridge-stack smoke), but on these nodes (Ubuntu 24.04,
+        # cgroup v2) the nested workload containers (job container with
+        # pytest/celery, Timescale, Redis, Mosquitto) are charged to this
+        # container's cgroup and hit this limit. The profiling reported no
+        # per-class max for the real-integration shards, sampled only every
+        # 20s and excluded non-ci.yml workflows, so 1024Mi could not be shown
+        # to give 2x headroom; an OOM here kills the job's whole Docker stack.
         resources:
           requests:
-            cpu: "1000m"
+            cpu: "2000m"
             memory: "1500Mi"
           limits:
             memory: "1500Mi"
@@ -196,12 +223,16 @@ template:
     containers:
       - name: runner
         image: ghcr.io/majowka/arc-runner:latest
+        # See the sizing note on the dind container above. Memory 1024Mi (was
+        # 2500Mi, request = limit): observed max 320Mi in the 2026-09-24
+        # profiling and ~520Mi in the 5-day sample in gitops PR #123, so >= 2x
+        # headroom. No CPU limit (bursting intended).
         resources:
           requests:
-            cpu: "2000m"
-            memory: "2500Mi"
+            cpu: "500m"
+            memory: "1024Mi"
           limits:
-            memory: "2500Mi"
+            memory: "1024Mi"
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
