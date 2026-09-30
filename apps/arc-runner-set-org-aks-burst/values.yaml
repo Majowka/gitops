@@ -27,12 +27,18 @@ runnerScaleSetName: "aks-burst-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
-# Elastic overflow, not a steady-state pool: scales from 0 so the Spot node
-# pool (autoscaling 0->8 Standard_D8as_v5 nodes) can scale to zero when
-# on-prem k3s-arc-org isn't at its ceiling. maxRunners 24 = 8 nodes x ~3
-# runner pods/node at this resource sizing (~2.5 vCPU / ~2.5Gi per pod, see
-# the dind/runner resources below) — matches the tf-azure node pool sizing
+# Scales from 0 so the Spot node pool (autoscaling 0->8 Standard_D8as_v5
+# nodes) can scale to zero when idle. maxRunners 24 = 8 nodes x ~3 runner
+# pods/node at this resource sizing (~2.5 vCPU / ~2.5Gi per pod, see the
+# dind/runner resources below) — matches the tf-azure node pool sizing
 # described in this PR.
+#
+# NOTE: this is not an overflow-only pool gated on k3s-arc-org's load. Both
+# scale sets share the same GitHub labels/runner group, so GitHub assigns
+# each queued job to whichever cluster's listener has a free runner first —
+# a race, not a deterministic "AKS only picks up jobs when on-prem is full"
+# arrangement. Whether a given job lands on-prem or on AKS is not
+# controlled by this config.
 minRunners: 0
 maxRunners: 24
 containerMode: {}
@@ -76,6 +82,13 @@ template:
         labelSelector:
           matchLabels:
             app.kubernetes.io/part-of: gha-runner-scale-set
+    # terminationGracePeriodSeconds below is for graceful pod shutdown
+    # (e.g. controller-initiated scale-down) — it does NOT apply to Spot
+    # eviction. Azure gives Spot VMs ~30s eviction notice, not 600s; a
+    # runner mid-job on an evicted node gets interrupted regardless of this
+    # value. No workflow-level retry is configured here — that's a
+    # separate, out-of-scope concern (see the job itself / workflow repo if
+    # retry-on-interruption is needed).
     terminationGracePeriodSeconds: 600
     initContainers:
       - name: init-dind-externals
