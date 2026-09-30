@@ -18,8 +18,19 @@
 # this repo's history refers to the now-decommissioned on-prem AZPL worker
 # zone (see chore/remove-azpl-cache-zones) — a different, unrelated thing
 # from the new Azure Poland Central AKS cluster.
+# On-prem's controller Helm release is literally named "arc", so its SA is
+# "arc-gha-rs-controller" (chart fullname = <release>-gha-rs-controller).
+# apps/arc-aks-burst's release name is "arc-aks-burst" (matches its
+# Application.metadata.name, not overridden), so its SA is
+# "arc-aks-burst-gha-rs-controller" — a DIFFERENT name, confirmed live:
+# `kubectl get sa -n arc-systems` on aks-azpl-burst. Copying on-prem's SA
+# name verbatim here silently pointed the generated RoleBinding at a
+# ServiceAccount that doesn't exist on this cluster, which the AKS
+# controller only surfaced as a generic "failed to get kubernetes secret"
+# reconcile error (RBAC denial, not a missing Secret — the Secret was
+# present the whole time).
 controllerServiceAccount:
-  name: arc-gha-rs-controller
+  name: arc-aks-burst-gha-rs-controller
   namespace: arc-systems
 githubConfigUrl: "https://github.com/majowka"
 githubConfigSecret: "arc-github-secret-org"
