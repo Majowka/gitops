@@ -27,13 +27,10 @@ spec:
           listenerAddr: ":8080"
           listenerEndpoint: "/metrics"
   destination:
-    # TODO: replace once aks-azpl-burst is registered via
-    # 'argocd cluster add' — see tf-azure PR (AKS cluster provisioning,
-    # parallel to this PR). This Application will not reconcile until then.
-    # Once registered, either set `name: aks-azpl-burst` (matching the name
-    # given to `argocd cluster add`) or `server: <AKS apiserver URL>` — do
-    # not invent a real-looking URL in the meantime.
-    name: aks-azpl-burst # PLACEHOLDER — not yet a registered ArgoCD cluster
+    # aks-azpl-burst registered 2026-09-30 via 'argocd cluster add
+    # aks-azpl-burst --core --name aks-azpl-burst' (server
+    # https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443).
+    name: aks-azpl-burst
     namespace: arc-systems
   syncPolicy:
     automated:
