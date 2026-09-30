@@ -50,11 +50,24 @@ runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
-# Scales from 0 so the Spot node pool (autoscaling 0->8 Standard_D8as_v5
-# nodes) can scale to zero when idle. maxRunners 24 = 8 nodes x ~3 runner
-# pods/node at this resource sizing (~2.5 vCPU / ~2.5Gi per pod, see the
-# dind/runner resources below) — matches the tf-azure node pool sizing
-# described in this PR.
+# 2026-10-01 INCIDENT MITIGATION: maxRunners temporarily capped at 6
+# (was 24). Azure LowPriorityCores (Spot) quota on this subscription is
+# stuck at 20 vCPU (self-service increase broken on this subscription,
+# see feedback_azure_spot_quota_default memory) — 20/8vCPU(D8as_v5) = 2
+# nodes max, 2 nodes x ~3 runners/node (~2.5 vCPU each) = 6 runners is
+# the real ceiling this pool can ever actually run right now. Setting
+# maxRunners above that is worse than useless: cluster-autoscaler
+# calculates node count needed to fit ALL currently-pending runner pods
+# and requests that whole batch from Azure in ONE atomic call — if the
+# batch exceeds available quota, the ENTIRE scale-up fails (not a
+# partial/best-effort fulfillment), so pods stay stuck at 0 nodes
+# instead of at least getting the 2 nodes quota actually allows.
+# Separately, this also bounds how many jobs this listener can "win" in
+# the GitHub assignment race per burst (see NOTE below) while it can't
+# execute them, shrinking blast radius until the architecture itself is
+# fixed (see project_aks_azpl_burst memory / docs/plans — GitHub
+# Actions has no primary/fallback concept for shared-label scale sets,
+# this is a stopgap, not a fix).
 #
 # NOTE: this is not an overflow-only pool gated on k3s-arc-org's load. Both
 # scale sets share the same GitHub labels/runner group, so GitHub assigns
@@ -62,8 +75,14 @@ scaleSetLabels:
 # a race, not a deterministic "AKS only picks up jobs when on-prem is full"
 # arrangement. Whether a given job lands on-prem or on AKS is not
 # controlled by this config.
+#
+# REVERT to 24 (or higher, matching real node pool max-count) once the
+# Azure quota is genuinely fixed AND/OR the multi-cluster architecture
+# is redesigned (single k3s cluster with Azure Spot as plain k3s agent
+# nodes, scheduler-driven instead of GitHub-race-driven — see chat
+# history 2026-10-01).
 minRunners: 0
-maxRunners: 24
+maxRunners: 6
 containerMode: {}
 # Default ClusterFirst dnsPolicy (unchanged from arc-runner-set-org) — AKS
 # has its own working cluster DNS, no on-prem CoreDNS/SERVFAIL history here.
