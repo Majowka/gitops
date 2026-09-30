@@ -1,23 +1,34 @@
 # AKS burst variant of apps/arc-runner-set-org/values.yaml. Read that file's
 # comments too — this is a diff against it, not an independent design.
 #
-# GitHub-side identity is copied verbatim from arc-runner-set-org
-# (githubConfigUrl, scaleSetLabels, no explicit runnerGroup => GitHub
-# "Default" group) so GitHub pools jobs for `runs-on: [self-hosted,
-# builder-org]` across both clusters' listeners (assignment race, whichever
-# cluster has a free runner first — see docs/plans/arc-multi-cluster-ha.md
-# in Majowka/infrastructure, section 2, quoting GitHub's HA docs).
+# 2026-10-01 CORRECTED (was wrong, see incident in project_aks_azpl_burst
+# memory): this file previously used a DIFFERENT runnerScaleSetName
+# ("aks-burst-arc-org") in the SAME (Default) runner group as on-prem —
+# an untested, unconfirmed variant docs/plans/arc-multi-cluster-ha.md
+# (section 2, point 3) explicitly flagged as "not stated by GitHub docs
+# either way". GitHub's actually-documented HA recipe (same doc, section
+# 2, direct quote) is the opposite: SAME runnerScaleSetName, DIFFERENT
+# runner groups — "In order to do this [reuse the name], each runner
+# scale set must be assigned to a distinct runner group." Verified live
+# via `gh api orgs/majowka/actions/runner-groups` before this fix: only
+# one group ("Default") existed org-wide — on-prem's implicit default and
+# this file's implicit default were literally the same group, which is
+# also why the previous design needed a different name (same name in the
+# same group collides). Fixed properly now: runnerScaleSetName matches
+# on-prem, runnerGroup points at a NEW dedicated group
+# ("arc-org-pool-azure", created via `gh api -X POST
+# orgs/majowka/actions/runner-groups`) instead of reusing a different
+# name in the same group.
 #
-# runnerScaleSetName is intentionally NOT "k3s-arc-org": GitHub requires
-# runnerScaleSetName to be unique *within* a runner group (same source,
-# section 2: "Runner scale set names are unique within the runner group
-# they belong to"). Both clusters stay in the same (Default) group here —
-# deliberately, so job pooling needs zero extra GitHub-side config beyond
-# matching labels/group, per this change's scope — so the name must differ
-# per cluster instead. "aks-burst" also avoids reusing "azpl", which in
-# this repo's history refers to the now-decommissioned on-prem AZPL worker
-# zone (see chore/remove-azpl-cache-zones) — a different, unrelated thing
-# from the new Azure Poland Central AKS cluster.
+# GitHub-side identity otherwise copied verbatim from arc-runner-set-org
+# (githubConfigUrl, scaleSetLabels) so GitHub pools jobs for `runs-on:
+# [self-hosted, builder-org]` across both clusters' listeners (assignment
+# race, whichever cluster has a free runner first — GitHub does not
+# support priority/preference between them, confirmed in the same doc).
+# "aks-burst" naming elsewhere (Application names, SA names) is kept as
+# named already and unaffected by this fix — only the GitHub-side
+# runnerScaleSetName/runnerGroup identity changes here, not cluster-local
+# resource names.
 # On-prem's controller Helm release is literally named "arc", so its SA is
 # "arc-gha-rs-controller" (chart fullname = <release>-gha-rs-controller).
 # apps/arc-aks-burst's release name is "arc-aks-burst" (matches its
@@ -34,7 +45,8 @@ controllerServiceAccount:
   namespace: arc-systems
 githubConfigUrl: "https://github.com/majowka"
 githubConfigSecret: "arc-github-secret-org"
-runnerScaleSetName: "aks-burst-arc-org"
+runnerGroup: "arc-org-pool-azure"
+runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
