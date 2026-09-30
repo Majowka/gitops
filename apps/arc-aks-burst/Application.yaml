@@ -38,6 +38,12 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ServerSideApply=true # required: ARC CRDs exceed the 262144-byte
+        # kubectl.kubernetes.io/last-applied-configuration limit under
+        # client-side apply (confirmed live: SyncFailed on all 4 ARC CRDs
+        # on aks-azpl-burst until this was added) — matches apps/arc
+        # (on-prem), which already has this and was the actual 1:1 source
+        # of truth this file should have copied in the first place.
     retry:
       limit: 5
       backoff:
