@@ -1,0 +1,177 @@
+# AKS burst variant of apps/arc-runner-set-org/values.yaml. Read that file's
+# comments too — this is a diff against it, not an independent design.
+#
+# GitHub-side identity is copied verbatim from arc-runner-set-org
+# (githubConfigUrl, scaleSetLabels, no explicit runnerGroup => GitHub
+# "Default" group) so GitHub pools jobs for `runs-on: [self-hosted,
+# builder-org]` across both clusters' listeners (assignment race, whichever
+# cluster has a free runner first — see docs/plans/arc-multi-cluster-ha.md
+# in Majowka/infrastructure, section 2, quoting GitHub's HA docs).
+#
+# runnerScaleSetName is intentionally NOT "k3s-arc-org": GitHub requires
+# runnerScaleSetName to be unique *within* a runner group (same source,
+# section 2: "Runner scale set names are unique within the runner group
+# they belong to"). Both clusters stay in the same (Default) group here —
+# deliberately, so job pooling needs zero extra GitHub-side config beyond
+# matching labels/group, per this change's scope — so the name must differ
+# per cluster instead. "aks-burst" also avoids reusing "azpl", which in
+# this repo's history refers to the now-decommissioned on-prem AZPL worker
+# zone (see chore/remove-azpl-cache-zones) — a different, unrelated thing
+# from the new Azure Poland Central AKS cluster.
+controllerServiceAccount:
+  name: arc-gha-rs-controller
+  namespace: arc-systems
+githubConfigUrl: "https://github.com/majowka"
+githubConfigSecret: "arc-github-secret-org"
+runnerScaleSetName: "aks-burst-arc-org"
+scaleSetLabels:
+  - self-hosted
+  - builder-org
+# Elastic overflow, not a steady-state pool: scales from 0 so the Spot node
+# pool (autoscaling 0->8 Standard_D8as_v5 nodes) can scale to zero when
+# on-prem k3s-arc-org isn't at its ceiling. maxRunners 24 = 8 nodes x ~3
+# runner pods/node at this resource sizing (~2.5 vCPU / ~2.5Gi per pod, see
+# the dind/runner resources below) — matches the tf-azure node pool sizing
+# described in this PR.
+minRunners: 0
+maxRunners: 24
+containerMode: {}
+# Default ClusterFirst dnsPolicy (unchanged from arc-runner-set-org) — AKS
+# has its own working cluster DNS, no on-prem CoreDNS/SERVFAIL history here.
+#
+# CRD validation requires at least one container with a name; ARC controller
+# fills in the image (matching its own version) when image is omitted.
+listenerTemplate:
+  spec:
+    containers:
+      - name: listener
+template:
+  spec:
+    # No serviceAccountName override (unlike arc-runner-set-org's
+    # `arc-runner`): that SA only exists to grant the configure-registry-
+    # mirrors init container `kubectl get node`/endpoints RBAC
+    # (ClusterRole arc-runner-node-reader-mesh-manager + Role
+    # arc-runner-cache-reader in apps/arc-runner-set/manifests/rbac.yaml).
+    # That init container is dropped entirely below (see note on dind), so
+    # nothing in this pod needs Kubernetes API access — pods run as the
+    # namespace's default ServiceAccount.
+    #
+    # AKS taints its Spot node pool with
+    # kubernetes.azure.com/scalesetpriority=spot:NoSchedule; tolerate it so
+    # runner pods can actually schedule onto the burst pool.
+    tolerations:
+      - key: kubernetes.azure.com/scalesetpriority
+        operator: Equal
+        value: spot
+        effect: NoSchedule
+    # Hostname spread kept (still meaningful: avoid stacking every runner
+    # pod on one node). The zone-based constraint from arc-runner-set-org
+    # (maxSkew=3 across topology.kubernetes.io/zone={vrtx,ldc,azpl}) is
+    # dropped: that skew value and its rationale are tied to our 3 on-prem
+    # DC zones, which don't apply to a single-cloud AKS node pool.
+    topologySpreadConstraints:
+      - maxSkew: 1
+        topologyKey: kubernetes.io/hostname
+        whenUnsatisfiable: ScheduleAnyway
+        labelSelector:
+          matchLabels:
+            app.kubernetes.io/part-of: gha-runner-scale-set
+    terminationGracePeriodSeconds: 600
+    initContainers:
+      - name: init-dind-externals
+        image: ghcr.io/majowka/arc-runner:latest
+        command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/tmpDir
+      # configure-registry-mirrors (present in arc-runner-set-org) is
+      # dropped entirely for this variant: it configures dockerd/buildkitd
+      # to mirror through in-cluster registry-cache-${ZONE}.arc-runners.svc
+      # .cluster.local Services, which are only reachable from the on-prem
+      # k3s cluster (different cluster, different cluster-DNS, no
+      # Tailscale/VPN link to this AKS cluster by design). dind below uses
+      # stock defaults instead of a generated daemon.json/buildkitd.toml —
+      # public pulls go straight to the real registries (no
+      # insecure-registries entries needed either, since there's no
+      # internal cache to trust). If registry-cache-style acceleration is
+      # wanted on this cluster later, point daemon.json's
+      # registry-mirrors at mirror.gcr.io directly instead of reintroducing
+      # the in-cluster cache dependency.
+      - name: dind
+        image: docker:dind
+        restartPolicy: Always
+        securityContext:
+          privileged: true
+        # Resource sizing copied verbatim from arc-runner-set-org (same
+        # source profiling, same container split) — see that file's
+        # comments for the full rationale. Do not recompute.
+        resources:
+          requests:
+            cpu: "2000m"
+            memory: "1500Mi"
+          limits:
+            memory: "1500Mi"
+        env:
+          - name: DOCKER_GROUP_GID
+            value: "123"
+        # No zone-info/registry-cache /etc/hosts probing (that logic reads
+        # /zone-info/zone, written by the dropped init container above) —
+        # dockerd starts with stock config and pulls directly.
+        command:
+          - sh
+          - -c
+          - |
+            sleep 3
+            exec dockerd --host=unix:///var/run/docker.sock --group=$DOCKER_GROUP_GID
+        volumeMounts:
+          - name: dind-sock
+            mountPath: /var/run
+          - name: work
+            mountPath: /home/runner/_work
+          # dind daemon mounts the runner externals (node20/node24) so that
+          # container-based jobs get them bind-mounted at /__e. Without this,
+          # `container:` jobs fail with `/__e/node24/bin/node: no such file or
+          # directory` because the dind daemon's /home/runner/externals is empty.
+          - name: dind-externals
+            mountPath: /home/runner/externals
+    containers:
+      - name: runner
+        image: ghcr.io/majowka/arc-runner:latest
+        # Resource sizing copied verbatim from arc-runner-set-org — see that
+        # file's comments for the full rationale. Do not recompute.
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1024Mi"
+          limits:
+            memory: "1024Mi"
+        env:
+          - name: DOCKER_HOST
+            value: unix:///var/run/docker.sock
+          - name: RUNNER_WAIT_FOR_DOCKER_IN_SECONDS
+            value: "120"
+          - name: BUILDX_CONFIG
+            value: /home/runner/.docker/buildx
+          - name: DOCKER_CONFIG
+            value: /home/runner/_work/.docker
+        volumeMounts:
+          - name: dind-externals
+            mountPath: /home/runner/externals
+          - name: work
+            mountPath: /home/runner/_work
+          - name: dind-sock
+            mountPath: /var/run
+          - name: buildx-config
+            mountPath: /home/runner/.docker/buildx
+    volumes:
+      - name: dind-sock
+        emptyDir: {}
+      - name: work
+        emptyDir: {}
+      - name: dind-externals
+        emptyDir: {}
+      # buildx-config kept as an empty writable dir for BUILDX_CONFIG (no
+      # buildkitd.toml is generated here, unlike arc-runner-set-org — buildx
+      # falls back to its own defaults, same direct-pull behavior as dind).
+      - name: buildx-config
+        emptyDir: {}

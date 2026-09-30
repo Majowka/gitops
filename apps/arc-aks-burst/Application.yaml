@@ -1,0 +1,49 @@
+---
+# ARC controller (gha-runner-scale-set-controller) for the AKS burst cluster
+# (aks-azpl-burst, Azure Poland Central — provisioned by a separate tf-azure
+# PR). AutoscalingRunnerSets require a controller running on the SAME
+# cluster as the runner set (apps/arc-runner-set-org-aks-burst) — it is not
+# optional, see docs/plans/arc-multi-cluster-ha.md in Majowka/infrastructure
+# ("ARC (gha-runner-scale-set-controller) zainstalowany na drugim klastrze
+# ... nie jest opcjonalne"). Mirrors apps/arc/Application.yaml (the on-prem
+# k3s controller) 1:1, only destination and metadata.name differ.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: arc-aks-burst
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: ghcr.io/actions/actions-runner-controller-charts
+    chart: gha-runner-scale-set-controller
+    targetRevision: "0.14.2"
+    helm:
+      values: |
+        metrics:
+          controllerManagerAddr: ":8080"
+          listenerAddr: ":8080"
+          listenerEndpoint: "/metrics"
+  destination:
+    # TODO: replace once aks-azpl-burst is registered via
+    # 'argocd cluster add' — see tf-azure PR (AKS cluster provisioning,
+    # parallel to this PR). This Application will not reconcile until then.
+    # Once registered, either set `name: aks-azpl-burst` (matching the name
+    # given to `argocd cluster add`) or `server: <AKS apiserver URL>` — do
+    # not invent a real-looking URL in the meantime.
+    name: aks-azpl-burst # PLACEHOLDER — not yet a registered ArgoCD cluster
+    namespace: arc-systems
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
