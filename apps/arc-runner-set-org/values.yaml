@@ -223,16 +223,16 @@ template:
     containers:
       - name: runner
         image: ghcr.io/majowka/arc-runner:latest
-        # See the sizing note on the dind container above. Memory 1024Mi (was
-        # 2500Mi, request = limit): observed max 320Mi in the 2026-09-24
-        # profiling and ~520Mi in the 5-day sample in gitops PR #123, so >= 2x
-        # headroom. No CPU limit (bursting intended).
+        # See the sizing note on the dind container above. Memory request kept at
+        # 1024Mi to preserve node bin-packing (typical jobs use <= 520Mi). Limit
+        # raised to 4096Mi to allow memory bursting for CodeQL and heavy AST
+        # passes (fixes netbox-wg#1546 / gitops#136). No CPU limit (bursting intended).
         resources:
           requests:
             cpu: "500m"
             memory: "1024Mi"
           limits:
-            memory: "1024Mi"
+            memory: "4096Mi"
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock

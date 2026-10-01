@@ -199,7 +199,7 @@ template:
             cpu: "500m"
             memory: "1024Mi"
           limits:
-            memory: "1024Mi"
+            memory: "4096Mi"
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
