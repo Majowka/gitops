@@ -42,18 +42,37 @@
 #   separate nodes regardless of which Deployment owns them, so a single
 #   node failure can never take out the whole proxy group.
 #
-# - emptyDir is per-pod (same as before). On pod replacement the new pod
-#   gets a fresh sqlite, which re-syncs from the server within a minute.
+# Volume architecture (aligned with upstream zabbix-docker reference, gh#140):
 #
-# initContainer creates the db_data subdir: the Zabbix entrypoint doesn't
-# mkdir its sqlite parent (Z3002 cannot create database) on a fresh volume.
+# Previously a single emptyDir was mounted at /var/lib/zabbix, shadowing
+# every subdirectory the image creates at build time. This required an
+# init-data container to recreate lost dirs and was fragile against upstream
+# entrypoint changes (any new subdir = crashloop until init-data was updated).
 #
-# ProxyBufferMode=memory (Zabbix 7.0+): collected history/discovery data is
-# buffered in RAM, not the sqlite DB. The DB then only holds config synced
-# from the server, so write pressure on the sqlite file drops to near zero —
-# that constant write traffic is what kept corrupting it (malformed image
-# after a hard kill mid-write -> CrashLoop). The RAM buffer is dropped on
-# restart, which is fine here: the emptyDir buffer already is ephemeral.
+# Now: three targeted mounts on the specific subdirs that must be writable.
+# All other image-provided paths (/var/lib/zabbix/ssl/certs, ssl/keys,
+# ssl/ssl_ca, enc, ssh_keys, mibs, …) remain intact from the image layer —
+# no init container needed.
+#
+#   db-data        emptyDir → /var/lib/zabbix/db_data
+#     SQLite DB (ProxyBufferMode=memory: only server-synced config, ~zero
+#     write pressure, ephemeral is fine, re-syncs on pod start).
+#
+#   snmptraps      emptyDir → /var/lib/zabbix/snmptraps
+#     Written by snmptrapd sidecar (not deployed here), kept for entrypoint
+#     compat. Ephemeral, not useful without snmptrapd.
+#
+#   ssl-ca-internal  emptyDir(medium:Memory) → /var/lib/zabbix/ssl/ssl_ca_internal
+#     Written by openssl_prepare_ca() on every boot (upstream 5042789a,
+#     2026-09-15): does rm -rf + cp -a from ssl_ca on each start, so the
+#     target dir must be writable and is inherently ephemeral. Upstream
+#     uses tmpfs for this; emptyDir{medium:Memory} is the k8s equivalent.
+#     We don't use custom CA web scenarios (httptest.get → []) so this dir
+#     is always empty in practice — it just needs to exist and be writable.
+#
+# fsGroup:1995 causes kubelet to chown all emptyDir volumes to gid 1995
+# with g+rwX before any container runs, so the non-root user 1997:1995
+# can write without CAP_CHOWN or root.
 
 # Service per proxy instance. Used as the proxy's local_address in the
 # proxy group registration (Ansible role zabbix_proxy_k3s) — even for
@@ -129,6 +148,8 @@ spec:
         runAsNonRoot: true
         runAsUser: 1997
         runAsGroup: 1995
+        # fsGroup causes kubelet to chown all emptyDir volumes to gid 1995
+        # with g+rwX before any container runs. No init container needed.
         fsGroup: 1995
       # Hard anti-affinity by the shared app label keeps the two proxy
       # pods on separate nodes regardless of which Deployment owns them.
@@ -153,52 +174,14 @@ spec:
           operator: Exists
           effect: NoExecute
           tolerationSeconds: 30
-      initContainers:
-        # fsGroup: 1995 on the pod's securityContext makes kubelet chown the
-        # emptyDir mount to gid 1995 with g+rwX before any container runs, so
-        # the init container can mkdir as the non-root pod user (1997:1995)
-        # without escalating to root. The earlier root+chown+chmod was a
-        # leftover from before fsGroup was set; it stopped working after the
-        # b66d3e6 security hardening dropped CAP_CHOWN (capabilities: drop ALL),
-        # which silently broke chown even when running as uid 0 — pods went
-        # into Init:CrashLoopBackOff for ~4.5h before this was caught.
-        - name: init-data
-          image: busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
-          command:
-            - sh
-            - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1997
-            runAsGroup: 1995
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            seccompProfile:
-              type: RuntimeDefault
-            capabilities:
-              drop:
-                - ALL
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 100m
-              memory: 32Mi
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
-          # 7.0-alpine-latest: intentionally floating within the 7.0 LTS train
-          # to receive upstream security and bug-fix patch releases automatically.
-          # The `7.0` prefix pins the major.minor so incompatible upgrades are
-          # blocked; only patch-level changes are accepted. Renovate tracking is
-          # disabled for this image (renovate.json packageRules) because the
-          # Zabbix project does not publish semver-tagged patch releases — the
-          # rolling *-latest tag is the only reliable update channel.
-          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          # Pinned to the post-2026-09-15 digest (the build that introduced
+          # openssl_prepare_ca in the entrypoint — gh#140). Both replicas must
+          # run the same digest so registry-side updates can't silently diverge
+          # their behaviour again. Update intentionally via PR when upgrading.
+          # Tag kept for human readability; digest is what Kubernetes actually uses.
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest@sha256:af920211d4a57ea2e04e867eabd8899cbc7b3c641b86fb84fcd458207c3c50cd
           ports:
             - containerPort: 10051
               name: zbx-proxy
@@ -234,7 +217,7 @@ spec:
             - name: ZBX_LOGREMOTECOMMANDS
               value: "0"
             - name: ZBX_DEBUGLEVEL
-              value: "3"
+              value: "2"
           resources:
             requests:
               cpu: 50m
@@ -243,8 +226,12 @@ spec:
               cpu: 500m
               memory: 512Mi
           volumeMounts:
-            - name: data
-              mountPath: /var/lib/zabbix
+            - name: db-data
+              mountPath: /var/lib/zabbix/db_data
+            - name: snmptraps
+              mountPath: /var/lib/zabbix/snmptraps
+            - name: ssl-ca-internal
+              mountPath: /var/lib/zabbix/ssl/ssl_ca_internal
           livenessProbe:
             tcpSocket:
               port: 10051
@@ -256,9 +243,22 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
       volumes:
-        - name: data
+        # SQLite DB — ephemeral, re-syncs from server on pod start.
+        - name: db-data
           emptyDir:
-            sizeLimit: 1Gi
+            sizeLimit: 256Mi
+        # snmptraps writer socket — not actively used (no snmptrapd sidecar),
+        # kept for entrypoint compatibility.
+        - name: snmptraps
+          emptyDir:
+            sizeLimit: 64Mi
+        # openssl_prepare_ca() writes here on every boot (rm -rf + cp -a).
+        # Must be writable and is inherently ephemeral → Memory-backed emptyDir
+        # (equivalent to upstream's tmpfs mount for this path).
+        - name: ssl-ca-internal
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -304,45 +304,14 @@ spec:
           operator: Exists
           effect: NoExecute
           tolerationSeconds: 30
-      initContainers:
-        # fsGroup: 1995 on the pod's securityContext makes kubelet chown the
-        # emptyDir mount to gid 1995 with g+rwX before any container runs, so
-        # the init container can mkdir as the non-root pod user (1997:1995)
-        # without escalating to root. The earlier root+chown+chmod was a
-        # leftover from before fsGroup was set; it stopped working after the
-        # b66d3e6 security hardening dropped CAP_CHOWN (capabilities: drop ALL),
-        # which silently broke chown even when running as uid 0 — pods went
-        # into Init:CrashLoopBackOff for ~4.5h before this was caught.
-        - name: init-data
-          image: busybox:1.38@sha256:fd7dc98638c8e305f4dc34e979f1c0fdfdcaeb0fbf8fcff77ae834b6da3d7e6e
-          command:
-            - sh
-            - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
-          securityContext:
-            runAsNonRoot: true
-            runAsUser: 1997
-            runAsGroup: 1995
-            allowPrivilegeEscalation: false
-            readOnlyRootFilesystem: true
-            seccompProfile:
-              type: RuntimeDefault
-            capabilities:
-              drop:
-                - ALL
-          resources:
-            requests:
-              cpu: 10m
-              memory: 16Mi
-            limits:
-              cpu: 100m
-              memory: 32Mi
-          volumeMounts:
-            - name: data
-              mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
-          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          # Pinned to the post-2026-09-15 digest (the build that introduced
+          # openssl_prepare_ca in the entrypoint — gh#140). Both replicas must
+          # run the same digest so registry-side updates can't silently diverge
+          # their behaviour again. Update intentionally via PR when upgrading.
+          # Tag kept for human readability; digest is what Kubernetes actually uses.
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest@sha256:af920211d4a57ea2e04e867eabd8899cbc7b3c641b86fb84fcd458207c3c50cd
           ports:
             - containerPort: 10051
               name: zbx-proxy
@@ -375,7 +344,7 @@ spec:
             - name: ZBX_LOGREMOTECOMMANDS
               value: "0"
             - name: ZBX_DEBUGLEVEL
-              value: "3"
+              value: "2"
           resources:
             requests:
               cpu: 50m
@@ -384,8 +353,12 @@ spec:
               cpu: 500m
               memory: 512Mi
           volumeMounts:
-            - name: data
-              mountPath: /var/lib/zabbix
+            - name: db-data
+              mountPath: /var/lib/zabbix/db_data
+            - name: snmptraps
+              mountPath: /var/lib/zabbix/snmptraps
+            - name: ssl-ca-internal
+              mountPath: /var/lib/zabbix/ssl/ssl_ca_internal
           livenessProbe:
             tcpSocket:
               port: 10051
@@ -397,9 +370,16 @@ spec:
             initialDelaySeconds: 10
             periodSeconds: 10
       volumes:
-        - name: data
+        - name: db-data
           emptyDir:
-            sizeLimit: 1Gi
+            sizeLimit: 256Mi
+        - name: snmptraps
+          emptyDir:
+            sizeLimit: 64Mi
+        - name: ssl-ca-internal
+          emptyDir:
+            medium: Memory
+            sizeLimit: 32Mi
 ---
 # Utrzymuje min. 1 proxy w górze podczas dobrowolnych zakłóceń (drain
 # węzła). Selektor `app: zproxy-k3s` dopasowuje pody z obu Deploymentów,
