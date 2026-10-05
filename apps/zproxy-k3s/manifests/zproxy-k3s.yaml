@@ -167,7 +167,22 @@ spec:
           command:
             - sh
             - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
+            # db_data + snmptraps: required by the Zabbix entrypoint (original).
+            # ssl/*: the emptyDir that mounts /var/lib/zabbix shadows every
+            # subdirectory the image creates at build time. Upstream commit
+            # 5042789a (2026-09-15) introduced openssl_prepare_ca() which does
+            # `cp -a ssl/ssl_ca/. ssl/ssl_ca_internal/` with no existence guard,
+            # crashing the entrypoint when ssl_ca is missing (gh#140). Pre-create
+            # all four ssl subdirs here so the deployment is resilient to future
+            # upstream entrypoint changes regardless of the image pin below.
+            - >-
+              mkdir -p
+              /var/lib/zabbix/db_data
+              /var/lib/zabbix/snmptraps
+              /var/lib/zabbix/ssl/certs
+              /var/lib/zabbix/ssl/keys
+              /var/lib/zabbix/ssl/ssl_ca
+              /var/lib/zabbix/ssl/ssl_ca_internal
           securityContext:
             runAsNonRoot: true
             runAsUser: 1997
@@ -191,14 +206,12 @@ spec:
               mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
-          # 7.0-alpine-latest: intentionally floating within the 7.0 LTS train
-          # to receive upstream security and bug-fix patch releases automatically.
-          # The `7.0` prefix pins the major.minor so incompatible upgrades are
-          # blocked; only patch-level changes are accepted. Renovate tracking is
-          # disabled for this image (renovate.json packageRules) because the
-          # Zabbix project does not publish semver-tagged patch releases — the
-          # rolling *-latest tag is the only reliable update channel.
-          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          # Pinned to the post-2026-09-15 digest (the build that introduced
+          # openssl_prepare_ca in the entrypoint — gh#140). Both replicas must
+          # run the same digest so registry-side updates can't silently diverge
+          # their behaviour again. Update intentionally via PR when upgrading.
+          # Tag kept for human readability; digest is what Kubernetes actually uses.
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest@sha256:af920211d4a57ea2e04e867eabd8899cbc7b3c641b86fb84fcd458207c3c50cd
           ports:
             - containerPort: 10051
               name: zbx-proxy
@@ -318,7 +331,22 @@ spec:
           command:
             - sh
             - -c
-            - mkdir -p /var/lib/zabbix/db_data /var/lib/zabbix/snmptraps
+            # db_data + snmptraps: required by the Zabbix entrypoint (original).
+            # ssl/*: the emptyDir that mounts /var/lib/zabbix shadows every
+            # subdirectory the image creates at build time. Upstream commit
+            # 5042789a (2026-09-15) introduced openssl_prepare_ca() which does
+            # `cp -a ssl/ssl_ca/. ssl/ssl_ca_internal/` with no existence guard,
+            # crashing the entrypoint when ssl_ca is missing (gh#140). Pre-create
+            # all four ssl subdirs here so the deployment is resilient to future
+            # upstream entrypoint changes regardless of the image pin below.
+            - >-
+              mkdir -p
+              /var/lib/zabbix/db_data
+              /var/lib/zabbix/snmptraps
+              /var/lib/zabbix/ssl/certs
+              /var/lib/zabbix/ssl/keys
+              /var/lib/zabbix/ssl/ssl_ca
+              /var/lib/zabbix/ssl/ssl_ca_internal
           securityContext:
             runAsNonRoot: true
             runAsUser: 1997
@@ -342,7 +370,12 @@ spec:
               mountPath: /var/lib/zabbix
       containers:
         - name: zabbix-proxy
-          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest
+          # Pinned to the post-2026-09-15 digest (the build that introduced
+          # openssl_prepare_ca in the entrypoint — gh#140). Both replicas must
+          # run the same digest so registry-side updates can't silently diverge
+          # their behaviour again. Update intentionally via PR when upgrading.
+          # Tag kept for human readability; digest is what Kubernetes actually uses.
+          image: zabbix/zabbix-proxy-sqlite3:7.0-alpine-latest@sha256:af920211d4a57ea2e04e867eabd8899cbc7b3c641b86fb84fcd458207c3c50cd
           ports:
             - containerPort: 10051
               name: zbx-proxy
