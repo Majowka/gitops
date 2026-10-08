@@ -2,3 +2,6 @@
 # This repo is PUBLIC - never commit secrets or absolute local paths
 .agents/commands
 .windsurf/workflows
+
+# aidevops local project config
+.aidevops.json
