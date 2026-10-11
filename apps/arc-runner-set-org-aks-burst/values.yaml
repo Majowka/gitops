@@ -152,6 +152,21 @@ template:
       # wanted on this cluster later, point daemon.json's
       # registry-mirrors at mirror.gcr.io directly instead of reintroducing
       # the in-cluster cache dependency.
+      # Workflows on builder-org pass `buildkitd-config:
+      # /home/runner/.docker/buildx/buildkitd.toml` to setup-buildx-action
+      # (Majowka/mesh-manager#5746). Jobs land on this pool or on-prem
+      # (same runnerScaleSetName + label), and a missing file is a hard
+      # error. Write an intentionally empty config: no mirrors, so buildkit
+      # pulls straight from the real registries like dind does here.
+      - name: write-empty-buildkitd-config
+        image: ghcr.io/majowka/arc-runner:latest
+        command:
+          - /bin/sh
+          - -c
+          - echo "# AKS burst: no registry mirrors (see values.yaml)" > /buildx-config/buildkitd.toml
+        volumeMounts:
+          - name: buildx-config
+            mountPath: /buildx-config
       - name: dind
         image: docker:dind
         restartPolicy: Always
@@ -225,8 +240,8 @@ template:
         emptyDir: {}
       - name: dind-externals
         emptyDir: {}
-      # buildx-config kept as an empty writable dir for BUILDX_CONFIG (no
-      # buildkitd.toml is generated here, unlike arc-runner-set-org — buildx
-      # falls back to its own defaults, same direct-pull behavior as dind).
+      # buildx-config holds BUILDX_CONFIG; it only gets an empty
+      # buildkitd.toml (write-empty-buildkitd-config), no mirrors, unlike
+      # arc-runner-set-org.
       - name: buildx-config
         emptyDir: {}
