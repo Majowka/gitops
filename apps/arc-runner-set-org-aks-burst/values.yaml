@@ -163,7 +163,7 @@ template:
         command:
           - /bin/sh
           - -c
-          - echo "# AKS burst: no registry mirrors (see values.yaml)" > /buildx-config/buildkitd.toml
+          - 'echo "# AKS burst - no registry mirrors (see values.yaml)" > /buildx-config/buildkitd.toml'
         volumeMounts:
           - name: buildx-config
             mountPath: /buildx-config
