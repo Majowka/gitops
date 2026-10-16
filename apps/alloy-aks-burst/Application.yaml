@@ -26,6 +26,10 @@ spec:
             - key: node-role.kubernetes.io/control-plane
               operator: Exists
               effect: NoSchedule
+            - key: kubernetes.azure.com/scalesetpriority
+              operator: Equal
+              value: spot
+              effect: NoSchedule
           volumes:
             extra:
               - name: alloy-data
@@ -127,19 +131,37 @@ spec:
               }
 
               loki.process "filter" {
-                // health checks and debug noise
+                // health checks and debug noise (raw strings: Alloy does not unescape backticks)
                 stage.drop {
-                  expression = "(?i)(GET /(healthz|livez|readyz|health)\b|level=debug|\bDEBUG\b)"
+                  expression = `(?i)(GET /(healthz|livez|readyz|health)\b|level=debug|\bDEBUG\b)`
                 }
-                // redact common token shapes before leaving the cluster
+                // redact common credential shapes before logs leave the cluster
                 stage.replace {
-                  expression = "(?i)(ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}|glc_[A-Za-z0-9+/=_-]{20,}|bearer\s+[A-Za-z0-9._~+/=-]{20,})"
+                  expression = `(?i)(ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}|glc_[A-Za-z0-9+/=_-]{20,}|bearer\s+[A-Za-z0-9._~+/=-]{20,}|basic\s+[A-Za-z0-9+/=]{16,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`
                   replace    = "<redacted>"
                 }
-                // per-stream rate limit protects the free-tier quota
+                // quoted JSON fields: "token":"...", "password":"...", "client_secret":"..."
+                stage.replace {
+                  expression = `(?i)"(?:[a-z_]*(?:token|password|passwd|secret|api_?key)[a-z_]*)"\s*:\s*"([^"]+)"`
+                  replace    = "<redacted>"
+                }
+                // key=value pairs: token=..., api_key=..., secret=..., password=...
+                stage.replace {
+                  expression = `(?i)\b(?:[a-z_]*(?:token|password|passwd|secret|api_?key)[a-z_]*)=([^\s&"']+)`
+                  replace    = "<redacted>"
+                }
+                // per-pod rate limit: one noisy pod cannot starve the others
                 stage.limit {
-                  rate  = 500
-                  burst = 1000
+                  rate              = 500
+                  burst             = 1000
+                  drop              = true
+                  by_label_name     = "pod"
+                  max_distinct_labels = 10000
+                }
+                // node-wide ceiling protects the free-tier quota
+                stage.limit {
+                  rate  = 2000
+                  burst = 4000
                   drop  = true
                 }
                 forward_to = [loki.write.grafana_cloud.receiver]
