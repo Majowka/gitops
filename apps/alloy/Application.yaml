@@ -14,13 +14,39 @@ spec:
     targetRevision: "1.13.1"
     helm:
       releaseName: alloy
-      valuesObject:
-        # Secret `grafana-cloud-alloy` (LOKI_URL, LOKI_USER, ALLOY_TOKEN) is created
-        # out-of-band from Infisical infra-platform/prod:/platform/grafana-cloud
-        # (repo is public, no secrets in git).
+      values: |
+        # Secret `grafana-cloud-alloy` (LOKI_URL = base URL without path, LOKI_USER,
+        # ALLOY_TOKEN) is created out-of-band from Infisical
+        # infra-platform/prod:/platform/grafana-cloud (repo is public, no secrets in git).
         controller:
           type: daemonset
+          tolerations:
+            - key: CriticalAddonsOnly
+              operator: Exists
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+          volumes:
+            extra:
+              - name: alloy-data
+                hostPath:
+                  path: /var/lib/alloy-data
+                  type: DirectoryOrCreate
+        configReloader:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
         alloy:
+          # hostPath keeps log positions across pod restarts (no re-send, no free-tier quota burn)
+          storagePath: /var/lib/alloy-data
+          mounts:
+            extra:
+              - name: alloy-data
+                mountPath: /var/lib/alloy-data
           clustering:
             enabled: false
           extraEnv:
@@ -48,10 +74,11 @@ spec:
               cpu: 20m
               memory: 96Mi
             limits:
+              cpu: 500m
               memory: 256Mi
           configMap:
             content: |
-              // Pod logs of the pods scheduled on this node, via the Kubernetes API.
+              // Logs of the pods scheduled on this node, tailed via the Kubernetes API.
               discovery.kubernetes "pods" {
                 role = "pod"
                 selectors {
@@ -63,6 +90,12 @@ spec:
               discovery.relabel "pods" {
                 targets = discovery.kubernetes.pods.targets
 
+                // CI job pods: high volume and may echo tokens from builds, never ship them
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  regex         = "arc-runners"
+                  action        = "drop"
+                }
                 rule {
                   source_labels = ["__meta_kubernetes_namespace"]
                   target_label  = "namespace"
@@ -90,6 +123,25 @@ spec:
 
               loki.source.kubernetes "pods" {
                 targets    = discovery.relabel.pods.output
+                forward_to = [loki.process.filter.receiver]
+              }
+
+              loki.process "filter" {
+                // health checks and debug noise
+                stage.drop {
+                  expression = "(?i)(GET /(healthz|livez|readyz|health)\b|level=debug|\bDEBUG\b)"
+                }
+                // redact common token shapes before leaving the cluster
+                stage.replace {
+                  expression = "(?i)(ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}|glc_[A-Za-z0-9+/=_-]{20,}|bearer\s+[A-Za-z0-9._~+/=-]{20,})"
+                  replace    = "<redacted>"
+                }
+                // per-stream rate limit protects the free-tier quota
+                stage.limit {
+                  rate  = 500
+                  burst = 1000
+                  drop  = true
+                }
                 forward_to = [loki.write.grafana_cloud.receiver]
               }
 
