@@ -1,0 +1,52 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: kube-state-metrics
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-state-metrics
+    targetRevision: "8.6.0"
+    helm:
+      releaseName: kube-state-metrics
+      values: |
+        # Only the collectors needed for the pod/restart/OOM/node views (keeps series count low).
+        collectors:
+          - pods
+          - deployments
+          - daemonsets
+          - statefulsets
+          - nodes
+          - persistentvolumeclaims
+        # Never ship Secrets/ConfigMaps data; metric labels are not exported.
+        metricLabelsAllowlist: []
+        resources:
+          requests:
+            cpu: 20m
+            memory: 64Mi
+          limits:
+            memory: 192Mi
+        prometheus:
+          monitor:
+            enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
