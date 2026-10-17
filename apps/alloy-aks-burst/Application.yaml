@@ -1,0 +1,197 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy-aks-burst
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: "1.13.1"
+    helm:
+      releaseName: alloy
+      values: |
+        # Secret `grafana-cloud-alloy` (LOKI_URL = base URL without path, LOKI_USER,
+        # ALLOY_TOKEN) is created out-of-band from Infisical
+        # infra-platform/prod:/platform/grafana-cloud (repo is public, no secrets in git).
+        controller:
+          type: daemonset
+          tolerations:
+            - key: CriticalAddonsOnly
+              operator: Exists
+            - key: node-role.kubernetes.io/control-plane
+              operator: Exists
+              effect: NoSchedule
+            - key: kubernetes.azure.com/scalesetpriority
+              operator: Equal
+              value: spot
+              effect: NoSchedule
+          volumes:
+            extra:
+              - name: alloy-data
+                hostPath:
+                  path: /var/lib/alloy-data
+                  type: DirectoryOrCreate
+        configReloader:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+        alloy:
+          # hostPath keeps log positions across pod restarts (no re-send, no free-tier quota burn)
+          storagePath: /var/lib/alloy-data
+          mounts:
+            extra:
+              - name: alloy-data
+                mountPath: /var/lib/alloy-data
+          clustering:
+            enabled: false
+          extraEnv:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+            - name: LOKI_URL
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: LOKI_URL
+            - name: LOKI_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: LOKI_USER
+            - name: ALLOY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: ALLOY_TOKEN
+          resources:
+            requests:
+              cpu: 20m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+          configMap:
+            content: |
+              // Logs of the pods scheduled on this node (AKS burst cluster), tailed via the Kubernetes API.
+              discovery.kubernetes "pods" {
+                role = "pod"
+                selectors {
+                  role  = "pod"
+                  field = "spec.nodeName=" + sys.env("NODE_NAME")
+                }
+              }
+
+              discovery.relabel "pods" {
+                targets = discovery.kubernetes.pods.targets
+
+                // CI job pods: high volume and may echo tokens from builds, never ship them
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  regex         = "arc-runners"
+                  action        = "drop"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace"]
+                  target_label  = "namespace"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_name"]
+                  target_label  = "pod"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_container_name"]
+                  target_label  = "container"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_node_name"]
+                  target_label  = "node"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name", "__meta_kubernetes_pod_label_app"]
+                  separator     = ";"
+                  regex         = "([^;]+);.*|;([^;]+)"
+                  replacement   = "$1$2"
+                  target_label  = "app"
+                }
+              }
+
+              loki.source.kubernetes "pods" {
+                targets    = discovery.relabel.pods.output
+                forward_to = [loki.process.filter.receiver]
+              }
+
+              loki.process "filter" {
+                // health checks and debug noise (raw strings: Alloy does not unescape backticks)
+                stage.drop {
+                  expression = `(?i)(GET /(healthz|livez|readyz|health)\b|level=debug|\bDEBUG\b)`
+                }
+                // redact common credential shapes before logs leave the cluster
+                stage.replace {
+                  expression = `(?i)(ghp_[A-Za-z0-9]{20,}|gh[ousr]_[A-Za-z0-9]{20,}|glc_[A-Za-z0-9+/=_-]{20,}|bearer\s+[A-Za-z0-9._~+/=-]{20,}|basic\s+[A-Za-z0-9+/=]{16,}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,})`
+                  replace    = "<redacted>"
+                }
+                // quoted JSON fields: "token":"...", "password":"...", "client_secret":"..."
+                stage.replace {
+                  expression = `(?i)"(?:[a-z_]*(?:token|password|passwd|secret|api_?key)[a-z_]*)"\s*:\s*"([^"]+)"`
+                  replace    = "<redacted>"
+                }
+                // key=value pairs: token=..., api_key=..., secret=..., password=...
+                stage.replace {
+                  expression = `(?i)\b(?:[a-z_]*(?:token|password|passwd|secret|api_?key)[a-z_]*)=([^\s&"']+)`
+                  replace    = "<redacted>"
+                }
+                // per-pod rate limit: one noisy pod cannot starve the others
+                stage.limit {
+                  rate              = 500
+                  burst             = 1000
+                  drop              = true
+                  by_label_name     = "pod"
+                  max_distinct_labels = 10000
+                }
+                // node-wide ceiling protects the free-tier quota
+                stage.limit {
+                  rate  = 2000
+                  burst = 4000
+                  drop  = true
+                }
+                forward_to = [loki.write.grafana_cloud.receiver]
+              }
+
+              loki.write "grafana_cloud" {
+                external_labels = {
+                  cluster = "aks-burst",
+                }
+                endpoint {
+                  url = sys.env("LOKI_URL") + "/loki/api/v1/push"
+                  basic_auth {
+                    username = sys.env("LOKI_USER")
+                    password = sys.env("ALLOY_TOKEN")
+                  }
+                }
+              }
+  destination:
+    server: https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443
+    namespace: monitoring
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
