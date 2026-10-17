@@ -99,7 +99,7 @@ template:
     # `arc-runner`): that SA only exists to grant the configure-registry-
     # mirrors init container `kubectl get node`/endpoints RBAC
     # (ClusterRole arc-runner-node-reader-mesh-manager + Role
-    # arc-runner-cache-reader in apps/arc-runner-set/manifests/rbac.yaml).
+    # arc-runner-cache-reader in apps/arc-runner-set-org/manifests/rbac.yaml).
     # That init container is dropped entirely below (see note on dind), so
     # nothing in this pod needs Kubernetes API access — pods run as the
     # namespace's default ServiceAccount.
