@@ -94,10 +94,20 @@ spec:
               discovery.relabel "pods" {
                 targets = discovery.kubernetes.pods.targets
 
-                // CI job pods: high volume and may echo tokens from builds, never ship them
+                // arc-runners holds CI job pods (high volume, may echo tokens) next to the
+                // registry/apt caches. Keep only the caches and the `runner` container
+                // (error lines only, see loki.process below); drop everything else there.
                 rule {
-                  source_labels = ["__meta_kubernetes_namespace"]
-                  regex         = "arc-runners"
+                  source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_name", "__meta_kubernetes_pod_container_name"]
+                  separator     = ";"
+                  regex         = `arc-runners;(?:registry-cache|apt-cache)[^;]*;[^;]*|arc-runners;[^;]+;runner`
+                  target_label  = "__keep"
+                  replacement   = "1"
+                }
+                rule {
+                  source_labels = ["__meta_kubernetes_namespace", "__keep"]
+                  separator     = ";"
+                  regex         = "arc-runners;"
                   action        = "drop"
                 }
                 rule {
@@ -131,6 +141,11 @@ spec:
               }
 
               loki.process "filter" {
+                // runner containers: ship only failure-relevant lines (job logs live in GitHub)
+                stage.match {
+                  selector = `{namespace="arc-runners", container="runner"} !~ "(?i)(error|fail|panic|oom|killed|exit code|exception|fatal)"`
+                  action   = "drop"
+                }
                 // health checks and debug noise (raw strings: Alloy does not unescape backticks)
                 stage.drop {
                   expression = `(?i)(GET /(healthz|livez|readyz|health)\b|level=debug|\bDEBUG\b)`
