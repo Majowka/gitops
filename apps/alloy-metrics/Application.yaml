@@ -97,19 +97,44 @@ spec:
                   regex         = "container_cpu_usage_seconds_total|container_cpu_cfs_throttled_periods_total|container_cpu_cfs_periods_total|container_memory_working_set_bytes|container_memory_rss|container_oom_events_total|container_network_receive_bytes_total|container_network_transmit_bytes_total"
                   action        = "keep"
                 }
-                // pod-level series only: drop the cgroup roots and pause containers
+                // cAdvisor reports network at pod level (container=""), so mark network series and
+                // exempt them from the container-level drops below.
                 rule {
-                  source_labels = ["container"]
-                  regex         = ""
+                  source_labels = ["__name__"]
+                  regex         = "container_network_.*"
+                  target_label  = "__net"
+                  replacement   = "1"
+                }
+                // pod-level series only: drop cgroup roots and pause containers (except network series)
+                rule {
+                  source_labels = ["container", "__net"]
+                  separator     = ";"
+                  regex         = ";"
                   action        = "drop"
                 }
                 rule {
-                  source_labels = ["container"]
-                  regex         = "POD"
+                  source_labels = ["container", "__net"]
+                  separator     = ";"
+                  regex         = "POD;"
+                  action        = "drop"
+                }
+                // arc-runners: ephemeral runner pods have unique names (series churn). Keep the registry/apt
+                // caches fully; for runners keep only OOM events and CPU throttling, drop the rest per pod.
+                rule {
+                  source_labels = ["namespace", "pod"]
+                  separator     = ";"
+                  regex         = "arc-runners;(?:registry-cache|apt-cache).*"
+                  target_label  = "__cache"
+                  replacement   = "1"
+                }
+                rule {
+                  source_labels = ["namespace", "__cache", "__name__"]
+                  separator     = ";"
+                  regex         = "arc-runners;;(?:container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_rss|container_cpu_cfs_periods_total|container_network_.*)"
                   action        = "drop"
                 }
                 rule {
-                  regex  = "id|name|image"
+                  regex  = "id|name|image|__net|__cache"
                   action = "labeldrop"
                 }
                 forward_to = [prometheus.remote_write.grafana_cloud.receiver]
@@ -163,12 +188,27 @@ spec:
               prometheus.relabel "ksm" {
                 rule {
                   source_labels = ["__name__"]
-                  regex         = "kube_pod_status_phase|kube_pod_container_status_restarts_total|kube_pod_container_status_last_terminated_reason|kube_pod_container_status_waiting_reason|kube_pod_container_status_ready|kube_pod_info|kube_pod_container_resource_requests|kube_pod_container_resource_limits|kube_deployment_spec_replicas|kube_deployment_status_replicas_available|kube_daemonset_status_desired_number_scheduled|kube_daemonset_status_number_available|kube_statefulset_replicas|kube_statefulset_status_replicas_ready|kube_node_status_condition|kube_node_spec_unschedulable|kube_node_status_allocatable|kube_node_status_capacity|kube_persistentvolumeclaim_status_phase"
+                  regex         = "kube_pod_container_status_restarts_total|kube_pod_container_status_last_terminated_reason|kube_pod_container_status_waiting_reason|kube_pod_container_status_ready|kube_pod_info|kube_pod_container_resource_requests|kube_pod_container_resource_limits|kube_deployment_spec_replicas|kube_deployment_status_replicas_available|kube_daemonset_status_desired_number_scheduled|kube_daemonset_status_number_available|kube_statefulset_replicas|kube_statefulset_status_replicas_ready|kube_node_status_condition|kube_node_spec_unschedulable|kube_node_status_allocatable|kube_node_status_capacity|kube_persistentvolumeclaim_status_phase"
                   action        = "keep"
                 }
-                // kube_pod_status_phase has one series per phase; keep only the active (value 1) ones' worth by dropping noise labels
+                // arc-runners: keep per-pod restarts and last terminated reason (OOM) for all pods, but only the
+                // registry/apt caches get the rest (ephemeral runner pods would add thousands of short-lived series).
                 rule {
-                  regex  = "instance|pod_ip|host_ip|uid|created_by_name|created_by_kind|host_network|priority_class"
+                  source_labels = ["namespace", "pod"]
+                  separator     = ";"
+                  regex         = "arc-runners;(?:registry-cache|apt-cache).*"
+                  target_label  = "__cache"
+                  replacement   = "1"
+                }
+                rule {
+                  source_labels = ["namespace", "__cache", "__name__"]
+                  separator     = ";"
+                  regex         = "arc-runners;;(?:kube_pod_info|kube_pod_container_status_ready|kube_pod_container_status_waiting_reason|kube_pod_container_resource_.*)"
+                  action        = "drop"
+                }
+                // labels that only add cardinality/noise (does not reduce the number of series)
+                rule {
+                  regex  = "instance|pod_ip|host_ip|uid|created_by_name|created_by_kind|host_network|priority_class|__cache"
                   action = "labeldrop"
                 }
                 forward_to = [prometheus.remote_write.grafana_cloud.receiver]
