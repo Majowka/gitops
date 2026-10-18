@@ -137,6 +137,13 @@ spec:
                   regex         = "arc-runners;;(?:container_cpu_usage_seconds_total|container_memory_working_set_bytes|container_memory_rss|container_cpu_cfs_periods_total|container_network_.*)"
                   action        = "drop"
                 }
+                // kube-system na AKS to pody zarzadzane przez Azure (cilium, csi-azure*, azure-cns, konnectivity, coredns, ...);
+                // nie diagnozujemy ich, zdrowie widac z kube-state-metrics (restarty, OOM) i kube_node_status_condition.
+                rule {
+                  source_labels = ["namespace"]
+                  regex         = "kube-system"
+                  action        = "drop"
+                }
                 rule {
                   regex  = "id|name|image|__net|__cache"
                   action = "labeldrop"
