@@ -20,6 +20,9 @@ spec:
         # infra-platform/prod:/platform/grafana-cloud (repo is public, no secrets in git).
         controller:
           type: daemonset
+          # Zmiana Secretu grafana-cloud-alloy-metrics (tokeny per klaster, rotacja) = rolling restart podow (Stakater Reloader)
+          extraAnnotations:
+            secret.reloader.stakater.com/reload: "grafana-cloud-alloy-metrics"
           tolerations:
             - key: CriticalAddonsOnly
               operator: Exists
