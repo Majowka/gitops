@@ -16,6 +16,8 @@ spec:
       values: |
         reloader:
           watchGlobally: true
+          # adnotacja w pod template zamiast zmiennej env: ArgoCD (selfHeal) nie widzi dryfu spec; patrz ignoreDifferences w apps/alloy*
+          reloadStrategy: annotations
           deployment:
             resources:
               requests:

@@ -20,6 +20,9 @@ spec:
         # infra-platform/prod:/platform/grafana-cloud (repo is public, no secrets in git).
         controller:
           type: daemonset
+          # Zmiana Secretu grafana-cloud-alloy (tokeny per klaster, rotacja) = rolling restart podow (Stakater Reloader). UWAGA: Reloadera nie ma na AKS burst (apps/reloader dziala tylko na k3s), adnotacja zadziala dopiero po jego wdrozeniu tam; do tego czasu rotacja = reczny rollout restart
+          extraAnnotations:
+            secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
           tolerations:
             - key: CriticalAddonsOnly
               operator: Exists
@@ -197,6 +200,12 @@ spec:
   destination:
     server: https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443
     namespace: monitoring
+  # Reloader (reloadStrategy: annotations) dopisuje te adnotacje do pod template; bez ignorowania selfHeal cofalby restart
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jqPathExpressions:
+        - '.spec.template.metadata.annotations["reloader.stakater.com/last-reloaded-from"]'
   syncPolicy:
     automated:
       prune: true
@@ -204,6 +213,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
