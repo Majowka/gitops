@@ -200,6 +200,12 @@ spec:
   destination:
     server: https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443
     namespace: monitoring
+  # Reloader (reloadStrategy: annotations) dopisuje te adnotacje do pod template; bez ignorowania selfHeal cofalby restart
+  ignoreDifferences:
+    - group: apps
+      kind: DaemonSet
+      jqPathExpressions:
+        - '.spec.template.metadata.annotations["reloader.stakater.com/last-reloaded-from"]'
   syncPolicy:
     automated:
       prune: true
@@ -207,6 +213,7 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:
