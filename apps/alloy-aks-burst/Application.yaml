@@ -20,7 +20,7 @@ spec:
         # infra-platform/prod:/platform/grafana-cloud (repo is public, no secrets in git).
         controller:
           type: daemonset
-          # Zmiana Secretu grafana-cloud-alloy (tokeny per klaster, rotacja) = rolling restart podow (Stakater Reloader)
+          # Zmiana Secretu grafana-cloud-alloy (tokeny per klaster, rotacja) = rolling restart podow (Stakater Reloader). UWAGA: Reloadera nie ma na AKS burst (apps/reloader dziala tylko na k3s), adnotacja zadziala dopiero po jego wdrozeniu tam; do tego czasu rotacja = reczny rollout restart
           extraAnnotations:
             secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
           tolerations:
