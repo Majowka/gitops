@@ -33,11 +33,15 @@ spec:
             secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
         # Najmniejsze uprawnienia: domyslna ClusterRole chartu daje cluster-wide get/list/watch m.in. na secrets
         # i configmaps (potrzebne innym komponentom Alloya, tu zbedne). loki.source.kubernetes_events czyta tylko
-        # core `events` (grupa ""), events.k8s.io nie jest potrzebne. `clusterRules` (nodes, nodes/metrics, /metrics)
-        # zostaja domyslne: odczyt metadanych wezlow, bez secrets/configmaps (pusta lista psuje szablon chartu).
+        # core `events` (grupa ""), events.k8s.io nie jest potrzebne. `clusterRules` zastapione ta sama regula
+        # `events` (pusta lista psuje szablon chartu), wiec bez nodes, nodes/metrics i /metrics.
         rbac:
           create: true
           rules:
+            - apiGroups: [""]
+              resources: ["events"]
+              verbs: ["get", "list", "watch"]
+          clusterRules:
             - apiGroups: [""]
               resources: ["events"]
               verbs: ["get", "list", "watch"]
