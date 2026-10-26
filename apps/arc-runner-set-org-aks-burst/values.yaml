@@ -135,6 +135,12 @@ template:
     initContainers:
       - name: init-dind-externals
         image: ghcr.io/majowka/arc-runner:latest
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "32Mi"
+          limits:
+            memory: "128Mi"
         command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
         volumeMounts:
           - name: dind-externals
@@ -160,6 +166,12 @@ template:
       # pulls straight from the real registries like dind does here.
       - name: write-empty-buildkitd-config
         image: ghcr.io/majowka/arc-runner:latest
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "32Mi"
+          limits:
+            memory: "128Mi"
         command:
           - /bin/sh
           - -c
@@ -209,10 +221,11 @@ template:
         image: ghcr.io/majowka/arc-runner:latest
         # Resource sizing copied verbatim from arc-runner-set-org — see that
         # file's comments for the full rationale. Do not recompute.
+        # Runner request 2048Mi matches arc-runner-set-org (gitops#159).
         resources:
           requests:
             cpu: "500m"
-            memory: "1024Mi"
+            memory: "2048Mi"
           limits:
             memory: "4096Mi"
         env:
