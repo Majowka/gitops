@@ -1,0 +1,119 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: alloy-events
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://grafana.github.io/helm-charts
+    chart: alloy
+    targetRevision: "1.13.1"
+    helm:
+      releaseName: alloy-events
+      values: |
+        # Eventy Kubernetes (NodeNotReady, OOMKilled, Evicted, FailedScheduling...) do Loki.
+        # MUSI dzialac w JEDNEJ replice: loki.source.kubernetes_events czyta eventy z API serwera,
+        # w DaemonSecie (alloy, 9 podow) kazdy event wpadlby 9x. Dlatego osobny Deployment replicas=1,
+        # strategia Recreate (rolling update chwilowo dalby 2 repliki = duplikaty), bez HPA i bez clusteringu.
+        # Secret `grafana-cloud-alloy` (LOKI_URL, LOKI_USER, ALLOY_TOKEN) jest wspolny z DaemonSetem alloy
+        # (tworzony poza gitem z Infisical, repo jest publiczne).
+        # Zrodlo konfiguracji: Majowka/infrastructure grafana/alloy/k8s-events.alloy
+        controller:
+          type: deployment
+          replicas: 1
+          updateStrategy:
+            type: Recreate
+          extraAnnotations:
+            secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
+        # ClusterRole chartu ma get/list/watch na `events` (core/v1 i events.k8s.io)
+        rbac:
+          create: true
+        configReloader:
+          resources:
+            requests:
+              cpu: 5m
+              memory: 16Mi
+            limits:
+              cpu: 50m
+              memory: 32Mi
+        alloy:
+          clustering:
+            enabled: false
+          extraEnv:
+            - name: LOKI_URL
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: LOKI_URL
+            - name: LOKI_USER
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: LOKI_USER
+            - name: ALLOY_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: grafana-cloud-alloy
+                  key: ALLOY_TOKEN
+          resources:
+            requests:
+              cpu: 10m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 192Mi
+          configMap:
+            content: |
+              loki.source.kubernetes_events "events" {
+                log_format = "logfmt"
+                forward_to = [loki.process.events.receiver]
+              }
+
+              loki.process "events" {
+                forward_to = [loki.write.events.receiver]
+
+                stage.static_labels {
+                  values = {
+                    job     = "loki.source.kubernetes.events",
+                    cluster = "k3s",
+                  }
+                }
+              }
+
+              loki.write "events" {
+                endpoint {
+                  url = sys.env("LOKI_URL") + "/loki/api/v1/push"
+
+                  basic_auth {
+                    username = sys.env("LOKI_USER")
+                    password = sys.env("ALLOY_TOKEN")
+                  }
+                }
+              }
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # Reloader (reloadStrategy: annotations) dopisuje te adnotacje do pod template; bez ignorowania selfHeal cofalby restart
+  ignoreDifferences:
+    - group: apps
+      kind: Deployment
+      jqPathExpressions:
+        - '.spec.template.metadata.annotations["reloader.stakater.com/last-reloaded-from"]'
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
