@@ -22,6 +22,8 @@ spec:
         # Secret `grafana-cloud-alloy` (LOKI_URL, LOKI_USER, ALLOY_TOKEN) jest wspolny z DaemonSetem alloy
         # (tworzony poza gitem z Infisical, repo jest publiczne).
         # Zrodlo konfiguracji: Majowka/infrastructure grafana/alloy/k8s-events.alloy
+        # Pozycje (polozenie w strumieniu eventow) sa w emptyDir (/tmp/alloy), klaster nie ma PVC: po restarcie poda
+        # mozliwe duplikaty eventow z ostatniej ok. godziny. Zaakceptowane.
         controller:
           type: deployment
           replicas: 1
@@ -29,7 +31,8 @@ spec:
             type: Recreate
           extraAnnotations:
             secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
-        # ClusterRole chartu ma get/list/watch na `events` (core/v1 i events.k8s.io)
+        # ClusterRole chartu daje get/list/watch tylko na core `events` (grupa ""); events.k8s.io nie jest
+        # potrzebne dla loki.source.kubernetes_events
         rbac:
           create: true
         configReloader:
