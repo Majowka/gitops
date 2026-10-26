@@ -55,7 +55,11 @@ template:
         resources:
           requests:
             cpu: "500m"
-            memory: "256Mi"
+            memory: "512Mi"
+          # Previously no memory limit at all: a single runaway job could exhaust the
+          # node (k3s-worker6 hang, 2026-10-26). 2Gi is 4x the request.
+          limits:
+            memory: "2048Mi"
         env:
           - name: ACTIONS_RUNNER_REQUIRE_JOB_CONTAINER
             value: "false"

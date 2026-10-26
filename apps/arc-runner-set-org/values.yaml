@@ -227,10 +227,14 @@ template:
         # 1024Mi to preserve node bin-packing (typical jobs use <= 520Mi). Limit
         # raised to 4096Mi to allow memory bursting for CodeQL and heavy AST
         # passes (fixes netbox-wg#1546 / gitops#136). No CPU limit (bursting intended).
+        # Request raised 1024Mi -> 2048Mi (2026-10-26): with 2.5Gi pod requests
+        # the scheduler packed 3 pods on one 8Gi LDC worker whose limits sum to
+        # ~16Gi; k3s-worker6 ran out of memory and hung (VM 212). Pod requests are
+        # now 3.5Gi (runner 2048Mi + dind 1500Mi), so at most 2 pods per 8Gi worker.
         resources:
           requests:
             cpu: "500m"
-            memory: "1024Mi"
+            memory: "2048Mi"
           limits:
             memory: "4096Mi"
         env:
