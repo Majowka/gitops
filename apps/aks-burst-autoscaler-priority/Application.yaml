@@ -1,0 +1,24 @@
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: aks-burst-autoscaler-priority
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/majowka/gitops
+    targetRevision: main
+    path: apps/aks-burst-autoscaler-priority/manifests
+  destination:
+    server: https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
