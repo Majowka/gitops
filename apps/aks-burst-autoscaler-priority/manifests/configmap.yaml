@@ -1,0 +1,17 @@
+# AKS cluster autoscaler priority expander (cluster aks-azpl-burst only).
+# Name/namespace are fixed by AKS. Higher number = higher priority; entries are
+# regexes matched against node group (VMSS) names: aks-<pool>-<id>-vmss.
+# Spot pool "burst" is preferred; on-demand pool "burstod" is used only when
+# the Spot pool cannot scale up (quota, capacity, backoff).
+# Requires auto_scaler_profile.expander = "priority" (tf-azure, azpl/aks.tf).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: cluster-autoscaler-priority-expander
+  namespace: kube-system
+data:
+  priorities: |-
+    10:
+      - aks-burstod-.*
+    50:
+      - aks-burst-.*
