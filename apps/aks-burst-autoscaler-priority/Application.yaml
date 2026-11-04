@@ -9,7 +9,7 @@ metadata:
 spec:
   project: default
   source:
-    repoURL: https://github.com/majowka/gitops
+    repoURL: https://github.com/Majowka/gitops.git
     targetRevision: main
     path: apps/aks-burst-autoscaler-priority/manifests
   destination:
