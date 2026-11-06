@@ -1,7 +1,12 @@
 {
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
-  "extends": ["config:recommended"],
-  "labels": ["renovate", "dependencies"],
+  "extends": [
+    "config:recommended"
+  ],
+  "labels": [
+    "renovate",
+    "dependencies"
+  ],
   "prHourlyLimit": 2,
   "prConcurrentLimit": 5,
   "argocd": {
@@ -23,13 +28,25 @@
     },
     {
       "description": "Zabbix proxy — floating *-latest tag; do not track.",
-      "matchPackageNames": ["zabbix/zabbix-proxy-sqlite3"],
+      "matchPackageNames": [
+        "zabbix/zabbix-proxy-sqlite3"
+      ],
       "enabled": false
     },
     {
       "description": "ARC runner image — custom image rebuilt weekly; do not track.",
-      "matchPackageNames": ["ghcr.io/majowka/arc-runner"],
+      "matchPackageNames": [
+        "ghcr.io/majowka/arc-runner"
+      ],
       "enabled": false
+    },
+    {
+      "description": "ArgoCD chart i Tailscale (ts-bridge): bez automerge. argo-cd wymaga ręcznego sync, a bump Tailscale restartuje UI.",
+      "matchPackageNames": [
+        "argo-cd",
+        "tailscale/tailscale"
+      ],
+      "automerge": false
     }
   ]
 }
