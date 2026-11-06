@@ -1,0 +1,28 @@
+---
+# Pod ts-bridge: wystawia argocd-server w tailnecie jako argocd.tail07246.ts.net.
+# Image tailscale/tailscale jest tu, więc Renovate podbija go PR-em.
+# Zostaje w Ansible (sekrety): ts-bridge-authkey i pusty ts-bridge-state
+# (roles/argocd). Application nie zarządza tymi Secretami.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ts-bridge
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Majowka/gitops.git
+    targetRevision: main
+    path: apps/ts-bridge/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true

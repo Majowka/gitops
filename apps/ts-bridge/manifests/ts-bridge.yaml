@@ -1,0 +1,112 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ts-bridge
+  namespace: argocd
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ts-bridge
+  namespace: argocd
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ts-bridge
+  namespace: argocd
+subjects:
+  - kind: ServiceAccount
+    name: ts-bridge
+    namespace: argocd
+roleRef:
+  kind: Role
+  name: ts-bridge
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ts-bridge-serve
+  namespace: argocd
+data:
+  serve.json: |
+    {
+      "TCP": {
+        "443": {"HTTPS": true}
+      },
+      "Web": {
+        "argocd.tail07246.ts.net:443": {
+          "Handlers": {
+            "/": {"Proxy": "http://argocd-server.argocd.svc.cluster.local:80"}
+          }
+        }
+      },
+      "AllowFunnel": {
+        "argocd.tail07246.ts.net:443": false
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ts-bridge
+  namespace: argocd
+  labels:
+    app: ts-bridge
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate    # jedno urządzenie na hostname w tailnecie
+  selector:
+    matchLabels:
+      app: ts-bridge
+  template:
+    metadata:
+      labels:
+        app: ts-bridge
+    spec:
+      serviceAccountName: ts-bridge
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:v1.98.4
+          env:
+            - name: TS_HOSTNAME
+              value: "argocd"
+            - name: TS_KUBE_SECRET
+              value: "ts-bridge-state"
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: ts-bridge-authkey
+                  key: authkey
+            - name: TS_SERVE_CONFIG
+              value: "/etc/tailscale/serve.json"
+            - name: TS_EXTRA_ARGS
+              value: "--reset"
+          volumeMounts:
+            - name: serve-config
+              mountPath: /etc/tailscale
+              readOnly: true
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add: ["NET_ADMIN"]
+      volumes:
+        - name: serve-config
+          configMap:
+            name: ts-bridge-serve

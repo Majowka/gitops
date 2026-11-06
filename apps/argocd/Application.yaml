@@ -1,0 +1,61 @@
+---
+# ArgoCD zarządza własnym chartem (self-management). Pierwszą instalację nadal robi
+# Ansible (ans_playbooks roles/argocd, `helm upgrade --install argocd`); od teraz
+# podbicie wersji to PR tutaj (Renovate), a nie ręczny replay playbooka.
+#
+# Sync RĘCZNY (bez `automated`): zły values mogą wyłączyć sam ArgoCD, więc każdy
+# bump synchronizujemy świadomie: `argocd app sync argocd --core`.
+# Values muszą odpowiadać roles/argocd/templates/values.yaml.j2 w ans_playbooks.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: argocd
+  namespace: argocd
+  # Brak finalizera resources-finalizer: usunięcie Application nie może skasować ArgoCD.
+spec:
+  project: default
+  source:
+    repoURL: https://argoproj.github.io/argo-helm
+    chart: argo-cd
+    targetRevision: "9.5.14"
+    helm:
+      releaseName: argocd
+      values: |
+        global:
+          domain: "argocd.tail07246.ts.net"
+        configs:
+          params:
+            # TLS kończy ts-bridge, argocd-server dostaje plain HTTP.
+            server.insecure: true
+          cm:
+            url: "https://argocd.tail07246.ts.net"
+            users.anonymous.enabled: "false"
+        server:
+          service:
+            type: ClusterIP
+          replicas: 1
+        repoServer:
+          replicas: 1
+        applicationSet:
+          replicas: 1
+        controller:
+          replicas: 1
+        dex:
+          enabled: false
+        notifications:
+          enabled: false
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  ignoreDifferences:
+    # Hash hasła admina wstrzykuje Ansible (patch argocd-secret), nie chart.
+    - kind: Secret
+      name: argocd-secret
+      jsonPointers:
+        - /data
+        - /stringData
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
