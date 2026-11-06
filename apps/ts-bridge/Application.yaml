@@ -8,8 +8,7 @@ kind: Application
 metadata:
   name: ts-bridge
   namespace: argocd
-  finalizers:
-    - resources-finalizer.argocd.argoproj.io
+  # Brak finalizera: usunięcie Application nie może skasować mostka i odciąć UI ArgoCD.
 spec:
   project: default
   source:
