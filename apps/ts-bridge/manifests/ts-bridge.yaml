@@ -11,9 +11,16 @@ metadata:
   name: ts-bridge
   namespace: argocd
 rules:
+  # Odczyt/zapis tylko własnego sekretu stanu (nie authkey, nie argocd-secret).
   - apiGroups: [""]
     resources: ["secrets"]
-    verbs: ["get", "create", "update", "patch"]
+    resourceNames: ["ts-bridge-state"]
+    verbs: ["get", "update", "patch"]
+  # `create` nie da się ograniczyć resourceNames; sekret stanu tworzy Ansible,
+  # więc to tylko zapas na odtworzenie (create nie pozwala niczego odczytać).
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
