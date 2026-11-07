@@ -50,39 +50,25 @@ runnerScaleSetName: "k3s-arc-org"
 scaleSetLabels:
   - self-hosted
   - builder-org
-# 2026-10-01 INCIDENT MITIGATION: maxRunners temporarily capped at 6
-# (was 24). Azure LowPriorityCores (Spot) quota on this subscription is
-# stuck at 20 vCPU (self-service increase broken on this subscription,
-# see feedback_azure_spot_quota_default memory) — 20/8vCPU(D8as_v5) = 2
-# nodes max, 2 nodes x ~3 runners/node (~2.5 vCPU each) = 6 runners is
-# the real ceiling this pool can ever actually run right now. Setting
-# maxRunners above that is worse than useless: cluster-autoscaler
-# calculates node count needed to fit ALL currently-pending runner pods
-# and requests that whole batch from Azure in ONE atomic call — if the
-# batch exceeds available quota, the ENTIRE scale-up fails (not a
-# partial/best-effort fulfillment), so pods stay stuck at 0 nodes
-# instead of at least getting the 2 nodes quota actually allows.
-# Separately, this also bounds how many jobs this listener can "win" in
-# the GitHub assignment race per burst (see NOTE below) while it can't
-# execute them, shrinking blast radius until the architecture itself is
-# fixed (see project_aks_azpl_burst memory / docs/plans — GitHub
-# Actions has no primary/fallback concept for shared-label scale sets,
-# this is a stopgap, not a fix).
+# maxRunners = 12 (2026-11-04). Pool capacity: Spot `burst` is capped by the
+# Azure LowPriorityCores quota (20 vCPU = 2 x D8as_v5 nodes), and the
+# on-demand pool `burstod` (D8as_v5, max 4 nodes, tf-azure#85 + the
+# cluster-autoscaler priority expander in kube-system) takes over when Spot
+# cannot scale. ~3 runners (~2.5 vCPU each) fit per D8as_v5 node, so
+# 12 runners = 4 nodes, matching the burstod max-count. Verified live on
+# 2026-11-04: a Spot scale-up rejected with 409 (quota) was followed by a
+# burstod 0->1 scale-up and the node was Ready ~65 s later.
+# History: was 24, capped to 6 on 2026-10-01 while quota was the only
+# capacity (a batch above quota failed the whole scale-up atomically).
 #
 # NOTE: this is not an overflow-only pool gated on k3s-arc-org's load. Both
 # scale sets share the same GitHub labels/runner group, so GitHub assigns
-# each queued job to whichever cluster's listener has a free runner first —
+# each queued job to whichever cluster's listener has a free runner first -
 # a race, not a deterministic "AKS only picks up jobs when on-prem is full"
 # arrangement. Whether a given job lands on-prem or on AKS is not
 # controlled by this config.
-#
-# REVERT to 24 (or higher, matching real node pool max-count) once the
-# Azure quota is genuinely fixed AND/OR the multi-cluster architecture
-# is redesigned (single k3s cluster with Azure Spot as plain k3s agent
-# nodes, scheduler-driven instead of GitHub-race-driven — see chat
-# history 2026-10-01).
 minRunners: 0
-maxRunners: 6
+maxRunners: 12
 containerMode: {}
 # Default ClusterFirst dnsPolicy (unchanged from arc-runner-set-org) — AKS
 # has its own working cluster DNS, no on-prem CoreDNS/SERVFAIL history here.
