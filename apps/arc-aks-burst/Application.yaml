@@ -22,6 +22,12 @@ spec:
     targetRevision: "0.15.1"
     helm:
       values: |
+        # Pin the controller to the AKS system pool: without this it can land
+        # on the on-demand `burstod` node and (being a non-evictable
+        # controller pod) keep that D8as_v5 up 24/7 (~10 USD/day) instead of
+        # letting cluster-autoscaler scale burstod back to 0.
+        nodeSelector:
+          kubernetes.azure.com/mode: system
         metrics:
           controllerManagerAddr: ":8080"
           listenerAddr: ":8080"

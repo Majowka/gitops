@@ -77,6 +77,10 @@ containerMode: {}
 # fills in the image (matching its own version) when image is omitted.
 listenerTemplate:
   spec:
+    # Same reason as the controller (apps/arc-aks-burst): keep the always-on
+    # listener on the system pool so burstod can scale to 0.
+    nodeSelector:
+      kubernetes.azure.com/mode: system
     containers:
       - name: listener
 template:
