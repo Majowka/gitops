@@ -47,7 +47,3 @@ Tailscale, MTU 1230) is too small for QUIC packets, so `cloudflared` runs with `
 
 The requirements scan (`CronJob requirements-scan`) is suspended here. To enable it, patch `REPOS` and
 `suspend: false` in `manifests/kustomization.yaml`.
-
-Before using it on real repositories, set the bot login in the `new-issue` CEL filter and the
-`GIT_AUTHOR_*` / `GIT_COMMITTER_*` of the publish steps to our GitHub App (`klaudiuszai[bot]`; upstream values are
-`ai-software-factory-agent[bot]`), in `Majowka/ai-software-factory`.
