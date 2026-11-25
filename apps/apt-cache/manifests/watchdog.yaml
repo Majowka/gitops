@@ -89,7 +89,7 @@ data:
     NS="arc-runners"
     CM_NS="kube-system"
     CM="coredns-custom"
-    ZONES="vrtx ldc"
+    ZONES="sysclay ldc"
     INTERVAL=15
     DEBOUNCE=2
 
@@ -123,7 +123,7 @@ data:
         --patch "{\"data\":{\"apt-cache.override\":\"${value}\",\"apt-cache.server\":\"\"}}"
     }
 
-    fail_vrtx=0; fail_ldc=0
+    fail_sysclay=0; fail_ldc=0
     LAST=""
 
     echo "$(date -u +%FT%TZ) apt-cache-watchdog started (interval=${INTERVAL}s debounce=${DEBOUNCE})"
@@ -132,17 +132,17 @@ data:
       for z in $ZONES; do
         n=$(ready_count "$z")
         case "$z" in
-          vrtx) prev=$fail_vrtx ;;
+          sysclay) prev=$fail_sysclay ;;
           ldc)  prev=$fail_ldc ;;
         esac
         if [ "$n" -gt 0 ]; then
           case "$z" in
-            vrtx) fail_vrtx=0 ;;
+            sysclay) fail_sysclay=0 ;;
             ldc)  fail_ldc=0 ;;
           esac
         else
           case "$z" in
-            vrtx) fail_vrtx=$((prev + 1)) ;;
+            sysclay) fail_sysclay=$((prev + 1)) ;;
             ldc)  fail_ldc=$((prev + 1)) ;;
           esac
         fi
@@ -152,7 +152,7 @@ data:
       bad=""
       for z in $ZONES; do
         case "$z" in
-          vrtx) fc=$fail_vrtx ;;
+          sysclay) fc=$fail_sysclay ;;
           ldc)  fc=$fail_ldc ;;
         esac
         if [ "$fc" -ge "$DEBOUNCE" ]; then
