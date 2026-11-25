@@ -21,6 +21,23 @@ spec:
         app.kubernetes.io/name: cloudflared
     spec:
       automountServiceAccountToken: false
+      # Workers VPC needs QUIC (outbound UDP 7844 to the Cloudflare edge); that egress is open only in LDC.
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: topology.kubernetes.io/zone
+                    operator: In
+                    values: ["ldc"]
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                topologyKey: kubernetes.io/hostname
+                labelSelector:
+                  matchLabels:
+                    app.kubernetes.io/name: cloudflared
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
