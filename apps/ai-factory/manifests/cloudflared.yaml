@@ -1,7 +1,8 @@
 # GitHub webhook path: GitHub App -> Cloudflare Worker github-openbot-relay (route "factory", Majowka/infrastructure
 # workers/github-openbot-relay/src/factory.js) -> Workers VPC Service ai-factory-el -> this tunnel -> el-new-issue:8080.
-# Outbound only (QUIC, UDP 7844); the cluster has no public entry. Remotely managed tunnel k3s-ai-factory: the token is in
-# Infisical (infra-k3s, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN) and in Secret cloudflared-tunnel (see ../README.md).
+# Outbound only (QUIC, UDP 7844); the cluster has no public entry. Remotely managed tunnel k3s-ai-factory
+# (a480012f-a287-402c-ac84-88016edc4dc2): the token is in
+# Infisical (infra-k3s / vrtx-cluster, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN) and in Secret cloudflared-tunnel (see ../README.md).
 apiVersion: apps/v1
 kind: Deployment
 metadata:

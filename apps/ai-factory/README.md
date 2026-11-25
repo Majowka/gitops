@@ -26,7 +26,7 @@ kubectl create secret generic github-app -n $NS \
 kubectl create secret generic github-webhook-secret -n $NS --from-literal=secret=<GITHUB_APP_WEBHOOK_SECRET>
 kubectl create secret generic opencode-go -n $NS --from-literal=api-key=<OPENCODE_GO_API_KEY>
 kubectl create secret generic claude-code-oauth -n $NS --from-literal=token=<output of: claude setup-token>
-# Cloudflare tunnel k3s-ai-factory (Infisical: infra-k3s, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN)
+# Cloudflare tunnel k3s-ai-factory (Infisical: infra-k3s / vrtx-cluster, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN)
 kubectl create secret generic cloudflared-tunnel -n $NS --from-literal=token=<TUNNEL_TOKEN>
 ```
 
