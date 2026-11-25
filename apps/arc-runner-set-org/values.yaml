@@ -158,12 +158,27 @@ template:
         # per-class max for the real-integration shards, sampled only every
         # 20s and excluded non-ci.yml workflows, so 1024Mi could not be shown
         # to give 2x headroom; an OOM here kills the job's whole Docker stack.
+        #
+        # Ephemeral storage (2026-11-25): /var/lib/docker is an emptyDir
+        # (`dind-storage`, see volumes) so kubelet counts it towards the pod's
+        # ephemeral-storage. Before, the docker:dind image's VOLUME made it an
+        # anonymous containerd volume (4-6 GB per runner) invisible to kubelet:
+        # nodes hit DiskPressure and kubelet evicted the wrong pods ("dind was
+        # using 96Ki"). Measured peaks 2026-11-25 (mesh-manager burst):
+        # /var/lib/docker 4.4-4.6 GB backend tests, 5.8 GB bridge-stack smoke
+        # (incl. 1.74 GB build cache); _work up to 1.1 GB; dind-externals 0.63 GB.
+        # Pod-level limit = sum of container limits (16Gi) >= sum of emptyDir
+        # sizeLimits (10Gi + 3Gi + small ones), so a runaway job evicts only
+        # its own pod. Requests (8Gi per pod) reflect a typical heavy job so
+        # the scheduler stops stacking several onto one 38 GB node.
         resources:
           requests:
             cpu: "2000m"
             memory: "1500Mi"
+            ephemeral-storage: "6Gi"
           limits:
             memory: "1500Mi"
+            ephemeral-storage: "12Gi"
         env:
           - name: DOCKER_GROUP_GID
             value: "123"
@@ -208,6 +223,8 @@ template:
         volumeMounts:
           - name: dind-sock
             mountPath: /var/run
+          - name: dind-storage
+            mountPath: /var/lib/docker
           - name: work
             mountPath: /home/runner/_work
           - name: docker-config
@@ -231,12 +248,15 @@ template:
         # the scheduler packed 3 pods on one 8Gi LDC worker whose limits sum to
         # ~16Gi; k3s-worker6 ran out of memory and hung (VM 212). Pod requests are
         # now 3.5Gi (runner 2048Mi + dind 1500Mi), so at most 2 pods per 8Gi worker.
+        # Ephemeral storage: see the note on the dind container.
         resources:
           requests:
             cpu: "500m"
             memory: "2048Mi"
+            ephemeral-storage: "2Gi"
           limits:
             memory: "4096Mi"
+            ephemeral-storage: "4Gi"
         env:
           - name: DOCKER_HOST
             value: unix:///var/run/docker.sock
@@ -266,8 +286,14 @@ template:
     volumes:
       - name: dind-sock
         emptyDir: {}
+      # Docker data root (images, containers, build cache). sizeLimit ~1.7x
+      # the measured 5.8 GB peak; exceeding it evicts only this runner pod.
+      - name: dind-storage
+        emptyDir:
+          sizeLimit: 10Gi
       - name: work
-        emptyDir: {}
+        emptyDir:
+          sizeLimit: 3Gi
       - name: dind-externals
         emptyDir: {}
       - name: docker-config
