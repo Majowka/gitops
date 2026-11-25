@@ -1,4 +1,29 @@
 ---
+# Zone Service for Sysclay runners (zone-labeler sets zone=sysclay there; dind
+# resolves `registry-cache-gcr-${ZONE}`). Same pods as the legacy -vrtx alias.
+apiVersion: v1
+kind: Service
+metadata:
+  name: registry-cache-gcr-sysclay
+  namespace: arc-runners
+spec:
+  type: ClusterIP
+  selector:
+    app: registry-cache-gcr
+  ports:
+    - name: https
+      port: 443
+      targetPort: 5000
+    - name: http
+      port: 80
+      targetPort: 5000
+    - name: registry
+      port: 5000
+      targetPort: 5000
+    - name: metrics
+      port: 5001
+      targetPort: 5001
+---
 # Alias Service for the VRTX replica — kept so anything still referencing
 # `registry-cache-gcr-vrtx` (e.g. arc_setup dind /etc/hosts override) keeps
 # working without changes.

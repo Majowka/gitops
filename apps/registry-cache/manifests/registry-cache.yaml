@@ -1,6 +1,6 @@
 ---
 # Pull-through cache for mcr.microsoft.com. Used by ARC runners for .NET /
-# Docker Hub (registry-1.docker.io) — the main pull-through cache used by containerd. One pod, pinned to a VRTX node — per-DC
+# Docker Hub (registry-1.docker.io) — the main pull-through cache used by containerd. One pod, pinned to the Sysclay zone (VRTX is off since 2026-11) — per-DC
 # topology (LDC fallback) lives in a separate Application that adds extra
 # Services and node-labelers.
 #
@@ -31,7 +31,7 @@ spec:
               - matchExpressions:
                   - key: topology.kubernetes.io/zone
                     operator: In
-                    values: ["vrtx"]
+                    values: ["sysclay", "vrtx"]  # vrtx: tylko przejściowo, do wdrożenia poprawionego zone-labelera
       containers:
         - name: registry
           image: registry:3
