@@ -61,3 +61,15 @@ patches:
                         value: "1"
                       - name: KEEP_LAST
                         value: "5"
+  # The `pipeline` service account is defined here, not in the remote tekton base, so kustomize does not move the
+  # subject of the base's RoleBinding llm-slots to this namespace (it stayed `agents` and every step got 403 on Leases).
+  - target:
+      kind: RoleBinding
+      name: llm-slots
+    patch: |-
+      - op: test
+        path: /subjects/0/name
+        value: pipeline
+      - op: replace
+        path: /subjects/0/namespace
+        value: ai-factory
