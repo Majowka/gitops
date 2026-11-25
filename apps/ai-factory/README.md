@@ -25,7 +25,9 @@ kubectl create secret generic github-app -n $NS \
 # The webhook secret of the GitHub App (the Worker forwards the original body and X-Hub-Signature-256 unchanged)
 kubectl create secret generic github-webhook-secret -n $NS --from-literal=secret=<GITHUB_APP_WEBHOOK_SECRET>
 kubectl create secret generic opencode-go -n $NS --from-literal=api-key=<OPENCODE_GO_API_KEY>
-kubectl create secret generic claude-code-oauth -n $NS --from-literal=token=<output of: claude setup-token>
+# Claude Code OAuth (Infisical: infra-platform / prod, /platform/claude-oauth, CLAUDE_OAUTH_TOKEN). Without it the tasks
+# routed to claude (PLAN, IMPLEMENT of bug issues) fall back to OpenCode.
+kubectl create secret generic claude-code-oauth -n $NS --from-literal=token=<CLAUDE_OAUTH_TOKEN>
 # Cloudflare tunnel k3s-ai-factory (Infisical: infra-k3s / vrtx-cluster, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN)
 kubectl create secret generic cloudflared-tunnel -n $NS --from-literal=token=<TUNNEL_TOKEN>
 ```
