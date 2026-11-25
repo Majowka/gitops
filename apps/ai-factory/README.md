@@ -9,7 +9,7 @@ Namespace `ai-factory`; needs `apps/tekton`.
 | Pipelines, triggers, CronJob, agent config | remote bases from `Majowka/ai-software-factory` (`agents/`, `tekton/`), ref pinned in `manifests/kustomization.yaml` |
 | Agent image | `ghcr.io/majowka/factory-agent:<sha>` (public), tag pinned in `manifests/kustomization.yaml` |
 | `pipeline` service account | `manifests/serviceaccount-pipeline.yaml` |
-| Public webhook URL | `manifests/webhook-funnel.yaml`: Tailscale Funnel, `https://ai-factory-webhook.tail07246.ts.net/` |
+| GitHub webhooks | GitHub App `KlaudiuszAI` → Cloudflare Worker `github-openbot-relay` (route `factory`, `Majowka/infrastructure` `workers/github-openbot-relay/src/factory.js`) → Workers VPC Service `ai-factory-el` → `manifests/cloudflared.yaml` (tunnel `k3s-ai-factory`, outbound only) → `el-new-issue:8080` |
 | Secrets | outside gitops (this repo is public), below |
 
 ## Secrets (until ESO + Infisical)
@@ -22,30 +22,31 @@ NS=ai-factory
 kubectl create secret generic github-app -n $NS \
   --from-literal=app-id=<APP_ID> --from-literal=installation-id=<INSTALLATION_ID> \
   --from-file=private-key.pem=./<app>.private-key.pem
-kubectl create secret generic github-webhook-secret -n $NS --from-literal=secret="$(openssl rand -hex 32)"  # same value in the GitHub App
+# The webhook secret of the GitHub App (the Worker forwards the original body and X-Hub-Signature-256 unchanged)
+kubectl create secret generic github-webhook-secret -n $NS --from-literal=secret=<GITHUB_APP_WEBHOOK_SECRET>
 kubectl create secret generic opencode-go -n $NS --from-literal=api-key=<OPENCODE_GO_API_KEY>
 kubectl create secret generic claude-code-oauth -n $NS --from-literal=token=<output of: claude setup-token>
-# Tailscale Funnel: reusable auth key with tag:ai-factory-funnel, plus an empty state secret
-kubectl create secret generic webhook-funnel-authkey -n $NS --from-literal=authkey=<TS_AUTHKEY>
-kubectl create secret generic webhook-funnel-state -n $NS
+# Cloudflare tunnel k3s-ai-factory (Infisical: infra-k3s, AI_FACTORY_CLOUDFLARED_TUNNEL_TOKEN)
+kubectl create secret generic cloudflared-tunnel -n $NS --from-literal=token=<TUNNEL_TOKEN>
 ```
 
-The tag `tag:ai-factory-funnel` needs `tagOwners` and the `funnel` node attribute in
-`Majowka/infrastructure` `tailscale/acl.hujson`.
+The tunnel must reach the Cloudflare edge on UDP 7844 (QUIC) from the cluster.
 
 ## First run
 
 1. `kubectl -n argocd get app tekton ai-factory` → `Synced` + `Healthy`;
    `kubectl get clusterinterceptors` lists `github` and `cel`.
-2. `kubectl -n ai-factory get pods` → `el-new-issue-*` and `webhook-funnel-*` running.
-3. `curl -s -o /dev/null -w '%{http_code}\n' https://ai-factory-webhook.tail07246.ts.net/` from outside the tailnet:
-   any HTTP answer from the listener (not a timeout) means Funnel works.
-4. Set the GitHub App webhook URL to `https://ai-factory-webhook.tail07246.ts.net/`, open a test issue in a
-   repository where the app is installed, watch `kubectl -n ai-factory get pipelinerun -w`.
+2. `kubectl -n ai-factory get pods` → `el-new-issue-*` and `cloudflared-*` running;
+   `kubectl -n ai-factory logs deploy/cloudflared` shows `Registered tunnel connection`.
+3. In the Worker set `FACTORY_REPO_IDS` (IDs of the repositories the factory serves) and
+   `FACTORY_ROUTE_ENABLED=true`. The GitHub App webhook URL stays as it is (the Worker).
+4. Open a test issue in one of those repositories and watch `kubectl -n ai-factory get pipelinerun -w`.
+   GitHub → App → Advanced → Recent Deliveries shows the Worker's answer: `forwarded: factory`,
+   `ignored: factory-route-off`, or `relay error` (502: tunnel or listener down).
 
 The requirements scan (`CronJob requirements-scan`) is suspended here. To enable it, patch `REPOS` and
 `suspend: false` in `manifests/kustomization.yaml`.
 
 Before using it on real repositories, set the bot login in the `new-issue` CEL filter and the
-`GIT_AUTHOR_*` / `GIT_COMMITTER_*` of the publish steps to our GitHub App (upstream values are
+`GIT_AUTHOR_*` / `GIT_COMMITTER_*` of the publish steps to our GitHub App (`klaudiuszai[bot]`; upstream values are
 `ai-software-factory-agent[bot]`), in `Majowka/ai-software-factory`.
