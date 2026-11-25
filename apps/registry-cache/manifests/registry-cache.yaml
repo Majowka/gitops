@@ -65,7 +65,7 @@ spec:
       volumes:
         - name: registry-data
           emptyDir:
-            sizeLimit: 10Gi
+            sizeLimit: 4Gi   # Sysclay: dyski 38 GB, DiskPressure 2026-11-25; po przekroczeniu pod jest evictowany i startuje z pustym cache
 ---
 apiVersion: v1
 kind: Service
