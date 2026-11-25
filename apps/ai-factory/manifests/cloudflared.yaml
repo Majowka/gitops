@@ -21,6 +21,18 @@ spec:
         app.kubernetes.io/name: cloudflared
     spec:
       automountServiceAccountToken: false
+      # The pod network runs over flannel on Tailscale (pod MTU 1230), too small for QUIC (Initial packets are 1280 B IP
+      # with DF), and Workers VPC needs QUIC. On the host network QUIC uses the node's own interface.
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      affinity:
+        # One replica per node (host network: the metrics port is taken on the node).
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  app.kubernetes.io/name: cloudflared
       securityContext:
         runAsNonRoot: true
         runAsUser: 65532
@@ -29,20 +41,19 @@ spec:
       containers:
         - name: cloudflared
           image: cloudflare/cloudflared:2026.11.2
-          args: ["tunnel", "--no-autoupdate", "--protocol", "quic", "--metrics", "0.0.0.0:2000", "run"]
+          args: ["tunnel", "--no-autoupdate", "--protocol", "quic", "--metrics", "127.0.0.1:20241", "run"]
           env:
             - name: TUNNEL_TOKEN
               valueFrom:
                 secretKeyRef:
                   name: cloudflared-tunnel
                   key: token
-          ports:
-            - name: metrics
-              containerPort: 2000
           livenessProbe:
             httpGet:
+              # Metrics listen on loopback only: Sysclay nodes have public addresses.
+              host: 127.0.0.1
               path: /ready
-              port: 2000
+              port: 20241
             failureThreshold: 3
             initialDelaySeconds: 10
             periodSeconds: 10
@@ -57,47 +68,3 @@ spec:
             readOnlyRootFilesystem: true
             capabilities:
               drop: ["ALL"]
----
-# The tunnel may reach only the EventListener (and DNS); towards the outside only the Cloudflare edge ports,
-# never the LAN or other pods.
-apiVersion: networking.k8s.io/v1
-kind: NetworkPolicy
-metadata:
-  name: cloudflared
-spec:
-  podSelector:
-    matchLabels:
-      app.kubernetes.io/name: cloudflared
-  policyTypes: ["Ingress", "Egress"]
-  ingress: []
-  egress:
-    - to:
-        - podSelector:
-            matchLabels:
-              eventlistener: new-issue
-      ports:
-        - protocol: TCP
-          port: 8080
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: kube-system
-          podSelector:
-            matchLabels:
-              k8s-app: kube-dns
-      ports:
-        - protocol: UDP
-          port: 53
-        - protocol: TCP
-          port: 53
-    - to:
-        - ipBlock:
-            cidr: 0.0.0.0/0
-            except: ["10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "100.64.0.0/10"]
-      ports:
-        - protocol: UDP
-          port: 7844
-        - protocol: TCP
-          port: 7844
-        - protocol: TCP
-          port: 443
