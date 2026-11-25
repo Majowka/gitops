@@ -1,0 +1,27 @@
+# AI Software Factory (Majowka/ai-software-factory): Tekton pipelines that turn GitHub issues and comments into
+# pull requests, with OpenCode (OpenCode Go) and Claude Code as agent engines. Needs apps/tekton.
+# Bump: change the ref of both remote bases together; the agent image tag is the commit SHA built by the
+# agent-image workflow of that repo (only commits that touch agents/Dockerfile produce a new image).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: ai-factory
+resources:
+  - namespace.yaml
+  - serviceaccount-pipeline.yaml
+  - https://github.com/Majowka/ai-software-factory//agents?ref=f5effcc45917f3ecfb673e5dfaf548cf096ef711
+  - https://github.com/Majowka/ai-software-factory//tekton?ref=f5effcc45917f3ecfb673e5dfaf548cf096ef711
+  - cloudflared.yaml
+images:
+  - name: ghcr.io/majowka/factory-agent
+    newTag: eb4081abd7d094ac555c6dd93c1779b84ec2d36b
+configurations:
+  - tekton-images.yaml
+patches:
+  # Requirements scan: off until the secrets exist and REPOS points at our repository.
+  - target:
+      kind: CronJob
+      name: requirements-scan
+    patch: |-
+      - op: add
+        path: /spec/suspend
+        value: true

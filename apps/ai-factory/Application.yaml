@@ -1,0 +1,36 @@
+# AI Software Factory in namespace ai-factory (manifests: Majowka/ai-software-factory, pinned in
+# manifests/kustomization.yaml). Requires apps/tekton. Secrets are created outside gitops, see README.md.
+# ServerSideDiff: the Tekton webhook fills defaults into Pipelines and Tasks; a client-side diff would
+# show them as drift forever.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ai-factory
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Majowka/gitops.git
+    targetRevision: main
+    path: apps/ai-factory/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: ai-factory
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      # first sync can start before apps/tekton has its CRDs and webhooks ready
+      limit: 10
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

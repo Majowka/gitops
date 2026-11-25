@@ -1,0 +1,62 @@
+# Tekton Pipelines v1.6.0 + Triggers v0.34.0 (cluster-wide: CRDs, controllers and webhooks in tekton-pipelines).
+# The Tekton webhooks fill their own certificates (Secrets *-certs), caBundles and webhook rules at runtime,
+# so those fields are ignored; otherwise selfHeal would wipe them and break admission.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: tekton
+  namespace: argocd
+  annotations:
+    argocd.argoproj.io/compare-options: ServerSideDiff=true
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Majowka/gitops.git
+    targetRevision: main
+    path: apps/tekton/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: tekton-pipelines
+  ignoreDifferences:
+    - kind: Secret
+      name: webhook-certs
+      namespace: tekton-pipelines
+      jsonPointers: [/data]
+    - kind: Secret
+      name: triggers-webhook-certs
+      namespace: tekton-pipelines
+      jsonPointers: [/data]
+    - kind: Secret
+      name: tekton-triggers-core-interceptors-certs
+      namespace: tekton-pipelines
+      jsonPointers: [/data]
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      jsonPointers: [/webhooks]
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      jsonPointers: [/webhooks]
+    - group: apiextensions.k8s.io
+      kind: CustomResourceDefinition
+      jqPathExpressions:
+        - .spec.conversion.webhook.clientConfig.caBundle
+    - group: triggers.tekton.dev
+      kind: ClusterInterceptor
+      jqPathExpressions:
+        - .spec.clientConfig.caBundle
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - RespectIgnoreDifferences=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 5m

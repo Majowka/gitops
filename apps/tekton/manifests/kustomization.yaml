@@ -1,0 +1,20 @@
+# Tekton Pipelines + Triggers (+ core interceptors github/cel) from the upstream releases, pinned.
+# Used by apps/ai-factory (Majowka/ai-software-factory). Bump: change the three versions together and check
+# https://github.com/tektoncd/pipeline/releases and https://github.com/tektoncd/triggers/releases (compatibility table).
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - https://storage.googleapis.com/tekton-releases/pipeline/previous/v1.6.0/release.yaml
+  - https://storage.googleapis.com/tekton-releases/triggers/previous/v0.34.0/release.yaml
+  - https://storage.googleapis.com/tekton-releases/triggers/previous/v0.34.0/interceptors.yaml
+patches:
+  # The factory gives one task two PVC workspaces (skills, work); the affinity assistant refuses that
+  # ("more than one PersistentVolumeClaim is bound"), so coscheduling is off.
+  - target:
+      kind: ConfigMap
+      name: feature-flags
+      namespace: tekton-pipelines
+    patch: |-
+      - op: replace
+        path: /data/coschedule
+        value: disabled
