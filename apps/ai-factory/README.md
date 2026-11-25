@@ -45,5 +45,6 @@ Tailscale, MTU 1230) is too small for QUIC packets, so `cloudflared` runs with `
    GitHub → App → Advanced → Recent Deliveries shows the Worker's answer: `forwarded: factory`,
    `ignored: factory-route-off`, or `relay error` (502: tunnel or listener down).
 
-The requirements scan (`CronJob requirements-scan`) is suspended here. To enable it, patch `REPOS` and
-`suspend: false` in `manifests/kustomization.yaml`.
+The requirements scan (`CronJob requirements-scan`) runs hourly for `Majowka/mesh-manager` (`REPOS`, `MAX_OPEN` and
+`suspend` are patched in `manifests/kustomization.yaml`). It only reads issues labeled `requirements`; the task issues
+it creates (label `req-<n>`) start a run in mesh-manager only after an `@ai` comment.

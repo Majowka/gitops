@@ -17,11 +17,25 @@ images:
 configurations:
   - tekton-images.yaml
 patches:
-  # Requirements scan: off until the secrets exist and REPOS points at our repository.
+  # Requirements scan: hourly, only for issues labeled `requirements` in the repositories below. The `test` ops make
+  # the patch fail (instead of patching the wrong variable) if the env order in the base CronJob changes.
+  # MAX_OPEN 2: at most two open task issues per requirements issue, to keep the cluster load low.
   - target:
       kind: CronJob
       name: requirements-scan
     patch: |-
       - op: add
         path: /spec/suspend
-        value: true
+        value: false
+      - op: test
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/3/name
+        value: REPOS
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/3/value
+        value: Majowka/mesh-manager
+      - op: test
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/4/name
+        value: MAX_OPEN
+      - op: replace
+        path: /spec/jobTemplate/spec/template/spec/containers/0/env/4/value
+        value: "2"
