@@ -30,7 +30,8 @@ kubectl create secret generic claude-code-oauth -n $NS --from-literal=token=<out
 kubectl create secret generic cloudflared-tunnel -n $NS --from-literal=token=<TUNNEL_TOKEN>
 ```
 
-The tunnel must reach the Cloudflare edge on UDP 7844 (QUIC) from the cluster.
+The tunnel needs QUIC (UDP 7844) to the Cloudflare edge, and Workers VPC accepts only QUIC. The pod network (flannel over
+Tailscale, MTU 1230) is too small for QUIC packets, so `cloudflared` runs with `hostNetwork`.
 
 ## First run
 
