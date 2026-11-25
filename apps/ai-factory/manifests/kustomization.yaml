@@ -8,8 +8,8 @@ namespace: ai-factory
 resources:
   - namespace.yaml
   - serviceaccount-pipeline.yaml
-  - https://github.com/Majowka/ai-software-factory//agents?ref=0d4868726d165d9a688abeaa6c035581fc4c21ad
-  - https://github.com/Majowka/ai-software-factory//tekton?ref=0d4868726d165d9a688abeaa6c035581fc4c21ad
+  - https://github.com/Majowka/ai-software-factory//agents?ref=44f120a42e4c038429264bf3f294db16d00d32e5
+  - https://github.com/Majowka/ai-software-factory//tekton?ref=44f120a42e4c038429264bf3f294db16d00d32e5
   - cloudflared.yaml
 images:
   - name: ghcr.io/majowka/factory-agent
