@@ -1,0 +1,8 @@
+# Lets the images transformer above also rewrite the step images of Tekton Tasks and Pipelines.
+images:
+  - path: spec/steps[]/image
+    kind: Task
+  - path: spec/tasks[]/taskSpec/steps[]/image
+    kind: Pipeline
+  - path: spec/finally[]/taskSpec/steps[]/image
+    kind: Pipeline

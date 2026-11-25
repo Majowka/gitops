@@ -1,0 +1,120 @@
+# Public HTTPS endpoint for the GitHub webhook: a Tailscale node with Funnel in front of the EventListener service
+# el-new-issue (created by Tekton Triggers). Same pattern as apps/ts-bridge, but Funnel is on, so GitHub can reach it
+# at https://ai-factory-webhook.tail07246.ts.net/ (the GitHub App webhook URL). The listener checks the webhook
+# signature (github-webhook-secret) of every request; nothing else is exposed.
+# Outside gitops (created by hand / Ansible): Secret webhook-funnel-authkey (key authkey: a reusable auth key with
+# tag:ai-factory-funnel) and an empty Secret webhook-funnel-state. The tag needs the funnel attribute in the
+# tailnet policy (Majowka/infrastructure tailscale/acl.hujson).
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: webhook-funnel
+  namespace: ai-factory
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: webhook-funnel
+  namespace: ai-factory
+rules:
+  # Only its own state secret (not the auth key, no create).
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["webhook-funnel-state"]
+    verbs: ["get", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: webhook-funnel
+  namespace: ai-factory
+subjects:
+  - kind: ServiceAccount
+    name: webhook-funnel
+    namespace: ai-factory
+roleRef:
+  kind: Role
+  name: webhook-funnel
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: webhook-funnel-serve
+  namespace: ai-factory
+data:
+  serve.json: |
+    {
+      "TCP": {
+        "443": {"HTTPS": true}
+      },
+      "Web": {
+        "ai-factory-webhook.tail07246.ts.net:443": {
+          "Handlers": {
+            "/": {"Proxy": "http://el-new-issue.ai-factory.svc.cluster.local:8080"}
+          }
+        }
+      },
+      "AllowFunnel": {
+        "ai-factory-webhook.tail07246.ts.net:443": true
+      }
+    }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: webhook-funnel
+  namespace: ai-factory
+  labels:
+    app: webhook-funnel
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate    # one device per hostname in the tailnet
+  selector:
+    matchLabels:
+      app: webhook-funnel
+  template:
+    metadata:
+      labels:
+        app: webhook-funnel
+    spec:
+      serviceAccountName: webhook-funnel
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:v1.104.7
+          env:
+            - name: TS_HOSTNAME
+              value: "ai-factory-webhook"
+            - name: TS_KUBE_SECRET
+              value: "webhook-funnel-state"
+            - name: TS_USERSPACE
+              value: "true"
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: webhook-funnel-authkey
+                  key: authkey
+            - name: TS_SERVE_CONFIG
+              value: "/etc/tailscale/serve.json"
+            - name: TS_EXTRA_ARGS
+              value: "--reset"
+          volumeMounts:
+            - name: serve-config
+              mountPath: /etc/tailscale
+              readOnly: true
+          resources:
+            requests:
+              cpu: "20m"
+              memory: "64Mi"
+            limits:
+              cpu: "500m"
+              memory: "256Mi"
+          securityContext:
+            runAsUser: 0
+            capabilities:
+              add: ["NET_ADMIN"]
+      volumes:
+        - name: serve-config
+          configMap:
+            name: webhook-funnel-serve
