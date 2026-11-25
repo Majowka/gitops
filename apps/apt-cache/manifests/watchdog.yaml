@@ -183,6 +183,9 @@ metadata:
   namespace: arc-runners
   labels:
     app: apt-cache-watchdog
+  annotations:
+    # watchdog.sh czytany tylko przy starcie — restart przy zmianie ConfigMapy
+    reloader.stakater.com/auto: "true"
 spec:
   replicas: 1
   selector:
@@ -192,6 +195,9 @@ spec:
     metadata:
       labels:
         app: apt-cache-watchdog
+      annotations:
+        # jednorazowy rollout po zmianie ZONES na "sysclay ldc" (2026-11-25)
+        majowka.me/script-rev: "zones-sysclay-ldc"
     spec:
       serviceAccountName: apt-cache-watchdog
       securityContext:
