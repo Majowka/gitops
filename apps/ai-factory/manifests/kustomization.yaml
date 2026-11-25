@@ -39,3 +39,25 @@ patches:
       - op: replace
         path: /spec/jobTemplate/spec/template/spec/containers/0/env/4/value
         value: "2"
+  # Run pruner: ~13 runs/h with a 10Gi local-path work volume each on 38G root disks; with 3 h retention the
+  # workers went back to DiskPressure (2026-11-25), so finished runs (pods, logs, PVCs) go after 1 h, keeping 5.
+  - target:
+      kind: CronJob
+      name: run-pruner
+    patch: |-
+      apiVersion: batch/v1
+      kind: CronJob
+      metadata:
+        name: run-pruner
+      spec:
+        jobTemplate:
+          spec:
+            template:
+              spec:
+                containers:
+                  - name: prune
+                    env:
+                      - name: RUN_KEEP_HOURS
+                        value: "1"
+                      - name: KEEP_LAST
+                        value: "5"
