@@ -57,12 +57,24 @@ template:
     initContainers:
       - name: init-dind-externals
         image: ghcr.io/majowka/arc-runner:latest
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "32Mi"
+          limits:
+            memory: "128Mi"
         command: ["cp", "-r", "/home/runner/externals/.", "/home/runner/tmpDir/"]
         volumeMounts:
           - name: dind-externals
             mountPath: /home/runner/tmpDir
       - name: configure-registry-mirrors
         image: bitnami/kubectl:latest
+        resources:
+          requests:
+            cpu: "10m"
+            memory: "64Mi"
+          limits:
+            memory: "256Mi"
         env:
           - name: NODE_NAME
             valueFrom:
