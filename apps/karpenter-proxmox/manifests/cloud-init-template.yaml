@@ -17,7 +17,9 @@ stringData:
           match:
             macaddress: {{ .MacAddr | lower | quote }}
           addresses:
-            - {{ .Address4 }}
+    {{- range .Address4 }}
+            - {{ . | quote }}
+    {{- end }}
           routes:
             - to: default
               via: {{ .Gateway4 }}
@@ -44,7 +46,10 @@ stringData:
         content: |
           #!/bin/sh
           set -e
-          curl -fsSL https://tailscale.com/install.sh | sh
+          TMP=$(mktemp -d)
+          curl -fsSL -o "$TMP/ts-install.sh" https://tailscale.com/install.sh
+          [ -s "$TMP/ts-install.sh" ] && head -1 "$TMP/ts-install.sh" | grep -q '^#!'
+          sh "$TMP/ts-install.sh"
           tailscale up --auth-key=file:/root/.tskey --hostname={{ .Metadata.Hostname }} --accept-dns=false --timeout=120s
           shred -u /root/.tskey
           TSIP=$(tailscale ip -4 | head -1)
@@ -54,6 +59,7 @@ stringData:
             --kubelet-arg "provider-id={{ .Metadata.ProviderID }}" \
             --kubelet-arg "register-with-taints=karpenter.sh/unregistered:NoExecute"
           shred -u /root/.k3stok
+          rm -rf "$TMP"
     runcmd:
       - systemctl enable --now qemu-guest-agent
       - swapoff -a
