@@ -53,9 +53,9 @@ stringData:
           tailscale up --auth-key=file:/root/.tskey --hostname={{ .Metadata.Hostname }} --accept-dns=false --timeout=120s
           shred -u /root/.tskey
           TSIP=$(tailscale ip -4 | head -1)
-          curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ get .Values "K3sVersion" }}" \
-            K3S_URL="{{ get .Values "K3sURL" }}" K3S_TOKEN="$(cat /root/.k3stok)" \
-            sh -s - agent --node-name {{ .Metadata.Hostname }} --node-ip "$TSIP" --flannel-iface tailscale0 \
+          curl -fsSL -o "$TMP/k3s-install.sh" https://get.k3s.io
+          [ -s "$TMP/k3s-install.sh" ] && head -1 "$TMP/k3s-install.sh" | grep -q '^#!'
+          INSTALL_K3S_VERSION="{{ get .Values "K3sVersion" }}"             K3S_URL="{{ get .Values "K3sURL" }}" K3S_TOKEN="$(cat /root/.k3stok)"             sh "$TMP/k3s-install.sh" agent --node-name {{ .Metadata.Hostname }} --node-ip "$TSIP" --flannel-iface tailscale0 \
             --kubelet-arg "provider-id={{ .Metadata.ProviderID }}" \
             --kubelet-arg "register-with-taints=karpenter.sh/unregistered:NoExecute"
           shred -u /root/.k3stok

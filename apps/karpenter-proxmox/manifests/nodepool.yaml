@@ -33,4 +33,4 @@ spec:
           values: ["on-demand"]
         - key: karpenter.proxmox.sinextra.dev/instance-cpu
           operator: Lt
-          values: ["3"]
+          values: ["5"]  # węzły 1-4 vCPU (limit puli 4 vCPU)
