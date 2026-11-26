@@ -1,0 +1,60 @@
+# Szablon cloud-init (Go template) dla węzłów Karpentera. NIE zawiera sekretów: tokeny są w osobnym Secret
+# `karpenter-template-values` (klucze K3sURL, K3sToken, K3sVersion, TsAuthKey), tworzonym ręcznie z Infisical.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: karpenter-template
+  namespace: kube-system
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+stringData:
+  network-config: |
+    network:
+      version: 2
+      ethernets:
+    {{- range .Interfaces }}
+        {{ .Name }}:
+          match:
+            macaddress: {{ .MacAddr | lower | quote }}
+          addresses:
+            - {{ .Address4 }}
+          routes:
+            - to: default
+              via: {{ .Gateway4 }}
+          nameservers:
+            addresses: [10.50.0.101]
+    {{- end }}
+  user-data: |
+    #cloud-config
+    hostname: {{ .Metadata.Hostname }}
+    manage_etc_hosts: true
+    package_update: true
+    packages:
+      - qemu-guest-agent
+      - curl
+    write_files:
+      - path: /root/.tskey
+        permissions: '0600'
+        content: {{ get .Values "TsAuthKey" | quote }}
+      - path: /root/.k3stok
+        permissions: '0600'
+        content: {{ get .Values "K3sToken" | quote }}
+      - path: /usr/local/bin/join-k3s.sh
+        permissions: '0755'
+        content: |
+          #!/bin/sh
+          set -e
+          curl -fsSL https://tailscale.com/install.sh | sh
+          tailscale up --auth-key=file:/root/.tskey --hostname={{ .Metadata.Hostname }} --accept-dns=false --timeout=120s
+          shred -u /root/.tskey
+          TSIP=$(tailscale ip -4 | head -1)
+          curl -sfL https://get.k3s.io | INSTALL_K3S_VERSION="{{ get .Values "K3sVersion" }}" \
+            K3S_URL="{{ get .Values "K3sURL" }}" K3S_TOKEN="$(cat /root/.k3stok)" \
+            sh -s - agent --node-name {{ .Metadata.Hostname }} --node-ip "$TSIP" --flannel-iface tailscale0 \
+            --kubelet-arg "provider-id={{ .Metadata.ProviderID }}" \
+            --kubelet-arg "register-with-taints=karpenter.sh/unregistered:NoExecute"
+          shred -u /root/.k3stok
+    runcmd:
+      - systemctl enable --now qemu-guest-agent
+      - swapoff -a
+      - /usr/local/bin/join-k3s.sh

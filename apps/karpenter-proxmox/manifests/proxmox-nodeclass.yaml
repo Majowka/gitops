@@ -1,0 +1,27 @@
+apiVersion: karpenter.proxmox.sinextra.dev/v1alpha1
+kind: ProxmoxNodeClass
+metadata:
+  name: kamil-poc
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
+spec:
+  region: kra
+  placementStrategy:
+    zoneBalance: Balanced
+  instanceTemplateRef:
+    kind: ProxmoxTemplate
+    name: ubuntu-noble
+  bootDevice:
+    size: 20G
+    storage: local-lvm
+  tags:
+    - kamil
+    - karpenter
+  metadataOptions:
+    type: cdrom
+    templatesRef:
+      name: karpenter-template
+      namespace: kube-system
+    valuesRef:
+      name: karpenter-template-values
+      namespace: kube-system

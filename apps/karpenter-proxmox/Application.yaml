@@ -1,0 +1,54 @@
+# karpenter-proxmox — PoC autoskalowania workerów k3s na testowym klastrze Proxmox (KRA-PROXMOXC-03).
+# Kontroler stoi TYLKO na węźle `kamil-karpenter-host` (etykieta dedicated=karpenter), bo tylko ten węzeł
+# widzi API PVE (10.50.3.21:8006) przez sieć SDN `kamilsim`. Sekrety (token PVE, tokeny k3s/Tailscale) NIE są w repo:
+# `karpenter-provider-proxmox` i `karpenter-template-values` w kube-system tworzone ręcznie z Infisical,
+# patrz apps/karpenter-proxmox/README.md. CRD z chartu (karpenter.sh, karpenter.proxmox.sinextra.dev) wymagają SSA.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: karpenter-proxmox
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  sources:
+    - repoURL: ghcr.io/sergelogvinov/charts
+      chart: karpenter-provider-proxmox
+      targetRevision: "0.7.1"
+      helm:
+        values: |
+          replicaCount: 1
+          existingConfigSecret: karpenter-provider-proxmox
+          nodeSelector:
+            dedicated: karpenter
+          tolerations:
+            - key: dedicated
+              operator: Equal
+              value: karpenter
+              effect: NoSchedule
+          logVerbosityLevel: info
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+    - repoURL: https://github.com/Majowka/gitops.git
+      targetRevision: HEAD
+      path: apps/karpenter-proxmox/manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: kube-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 5
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

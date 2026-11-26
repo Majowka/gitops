@@ -1,0 +1,36 @@
+# Szablon VM tworzony i utrzymywany przez provider: obraz Ubuntu noble importowany do `local:import`,
+# szablon na każdym węźle PVE na `local-lvm`. Sieć `kamilsim` (SDN Simple, SNAT na węźle), adresy z puli IPAM.
+apiVersion: karpenter.proxmox.sinextra.dev/v1alpha1
+kind: ProxmoxTemplate
+metadata:
+  name: ubuntu-noble
+  annotations:
+    argocd.argoproj.io/sync-wave: "1"
+spec:
+  sourceImage:
+    url: https://cloud-images.ubuntu.com/noble/current/noble-server-cloudimg-amd64.img
+    imageName: ubuntu-noble-amd64.qcow2
+  storageIDs:
+    - local
+    - local-lvm
+  machine: q35
+  agent:
+    enabled: true
+    type: virtio
+  cpu:
+    type: x86-64-v2-AES
+  vga:
+    type: serial0
+  network:
+    - name: net0
+      model: virtio
+      bridge: kamilsim
+      mtu: 1500
+      # pula IPAM providera (adres sieci, nie hosta); brama = adres mostu SDN
+      address4: 10.98.0.0/24
+      gateway4: 10.98.0.1
+      dnsServers:
+        - 10.50.0.101
+  tags:
+    - kamil
+    - karpenter
