@@ -30,8 +30,6 @@ spec:
           replicas: 1
           updateStrategy:
             type: Recreate
-          extraAnnotations:
-            secret.reloader.stakater.com/reload: "grafana-cloud-alloy"
           # Pula system (B2s), bez spota i bez burst/burstod: pod nie moze przytrzymywac drogich pul
           # (burstod nie skaluje sie do 0, gdy cos na niej siedzi). Realne uzycie ok. 60Mi RAM.
           nodeSelector:
@@ -118,12 +116,6 @@ spec:
   destination:
     server: https://aks-azpl-burst-q0b1219v.hcp.polandcentral.azmk8s.io:443
     namespace: monitoring
-  # Reloader (reloadStrategy: annotations) dopisuje te adnotacje do pod template; bez ignorowania selfHeal cofalby restart
-  ignoreDifferences:
-    - group: apps
-      kind: Deployment
-      jqPathExpressions:
-        - '.spec.template.metadata.annotations["reloader.stakater.com/last-reloaded-from"]'
   syncPolicy:
     automated:
       prune: true
