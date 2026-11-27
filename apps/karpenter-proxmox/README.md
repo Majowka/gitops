@@ -8,7 +8,7 @@ chart 0.7.1, app v0.17.0). Testowy klaster PVE `KRA-PROXMOXC-03` (region `kra`),
 - Kontroler działa tylko na węźle `kamil-karpenter-host` (`dedicated=karpenter:NoSchedule`): tylko ten węzeł widzi API PVE.
 - Nowe węzły: Ubuntu noble, Tailscale (`tag:k3s-worker`) + k3s agent (`node-ip` z Tailscale, `flannel-iface=tailscale0`),
   `provider-id` ustawiony przez kubelet. Bez Proxmox CCM (mastery mają `disable-cloud-controller`).
-- NodePool `kamil-poc`: limit 4 vCPU / 8 GiB, bez taintu (pody Pending, których nie da się umieścić na obecnych workerach, wywołają scale-up, w granicach limitu), konsolidacja `WhenEmpty` po 5 min.
+- NodePool `kamil-poc`: limit 120 vCPU / 640 GiB (ok. połowa testowego PVE), bez taintu (pody Pending, których nie da się umieścić na obecnych workerach, wywołają scale-up, w granicach limitu), konsolidacja `WhenEmpty` po 5 min.
 
 ## Sekrety (poza repo, tworzone ręcznie z Infisical `infra-platform/prod`)
 
@@ -22,6 +22,8 @@ Zmiany tylko przez PR. Test: pod z `nodeSelector: {pool: kamil-poc}` (wymusza w�
 nowy NodeClaim -> VM na PVE -> węzeł Ready.
 
 ## Znane ryzyka PoC
+
+- Realnym limitem jest dysk `local-lvm` (20 GB na VM): na testowym PVE ok. 66 GiB na dwóch węzłach (.22, .23) i 171 GiB na czterech pozostałych, wolne ok. 50-170 GiB na węzeł, czyli ok. 2-3 VM na .22/.23 i ok. 8 na reszcie (razem ok. 30). Limit CPU (120 vCPU) nie jest tu wąskim gardłem.
 
 - Instalatory Tailscale i k3s pobierane z internetu do pliku (sprawdzany shebang, bez `curl | sh`); k3s przypięty wersją, Tailscale bez pinu. Token k3s kasowany dopiero po udanej instalacji.
 

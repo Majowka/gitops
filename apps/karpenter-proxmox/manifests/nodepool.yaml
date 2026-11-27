@@ -6,8 +6,8 @@ metadata:
     argocd.argoproj.io/sync-wave: "3"
 spec:
   limits:
-    cpu: "4"
-    memory: 8Gi
+    cpu: "120"
+    memory: 640Gi
   disruption:
     consolidationPolicy: WhenEmpty
     consolidateAfter: 5m
@@ -29,4 +29,4 @@ spec:
           values: ["on-demand"]
         - key: karpenter.proxmox.sinextra.dev/instance-cpu
           operator: Lt
-          values: ["5"]  # węzły 1-4 vCPU (limit puli 4 vCPU)
+          values: ["5"]  # węzły 1-4 vCPU (limit puli 120 vCPU)
