@@ -8,7 +8,7 @@ chart 0.7.1, app v0.17.0). Testowy klaster PVE `KRA-PROXMOXC-03` (region `kra`),
 - Kontroler działa tylko na węźle `kamil-karpenter-host` (`dedicated=karpenter:NoSchedule`): tylko ten węzeł widzi API PVE.
 - Nowe węzły: Ubuntu noble, Tailscale (`tag:k3s-worker`) + k3s agent (`node-ip` z Tailscale, `flannel-iface=tailscale0`),
   `provider-id` ustawiony przez kubelet. Bez Proxmox CCM (mastery mają `disable-cloud-controller`).
-- NodePool `kamil-poc`: limit 4 vCPU / 8 GiB, taint `pool=kamil-poc:NoSchedule`, konsolidacja `WhenEmpty` po 5 min.
+- NodePool `kamil-poc`: limit 4 vCPU / 8 GiB, bez taintu (pody Pending, których nie da się umieścić na obecnych workerach, wywołają scale-up, w granicach limitu), konsolidacja `WhenEmpty` po 5 min.
 
 ## Sekrety (poza repo, tworzone ręcznie z Infisical `infra-platform/prod`)
 
@@ -18,7 +18,7 @@ chart 0.7.1, app v0.17.0). Testowy klaster PVE `KRA-PROXMOXC-03` (region `kra`),
 | `karpenter-template-values` | `K3sURL`, `K3sToken` (agent-token), `K3sVersion`, `TsAuthKey` | master k3s, `/tailscale/AUTH_KEY` |
 
 Sekrety są ręczne, bo ESO/ExternalSecret nie jest jeszcze zainstalowany w klastrze; po jego wdrożeniu zastąpić je ExternalSecret.
-Zmiany tylko przez PR. Test: pod z `nodeSelector: {pool: kamil-poc}` i tolerancją `pool=kamil-poc` ->
+Zmiany tylko przez PR. Test: pod z `nodeSelector: {pool: kamil-poc}` (wymusza węzeł z tej puli) ->
 nowy NodeClaim -> VM na PVE -> węzeł Ready.
 
 ## Znane ryzyka PoC

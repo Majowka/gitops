@@ -20,10 +20,6 @@ spec:
         group: karpenter.proxmox.sinextra.dev
         kind: ProxmoxNodeClass
         name: kamil-poc
-      taints:
-        - key: pool
-          value: kamil-poc
-          effect: NoSchedule
       requirements:
         - key: kubernetes.io/arch
           operator: In
