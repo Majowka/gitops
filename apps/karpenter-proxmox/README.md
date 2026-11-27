@@ -23,6 +23,8 @@ nowy NodeClaim -> VM na PVE -> węzeł Ready.
 
 ## Znane ryzyka PoC
 
+- Realnym limitem jest dysk `local-lvm` (20 GB na VM): na testowym PVE ok. 66 GiB na dwóch węzłach (.22, .23) i 171 GiB na czterech pozostałych, wolne ok. 50-170 GiB na węzeł, czyli ok. 2-3 VM na .22/.23 i ok. 8 na reszcie (razem ok. 30). Limit CPU (120 vCPU) nie jest tu wąskim gardłem.
+
 - Instalatory Tailscale i k3s pobierane z internetu do pliku (sprawdzany shebang, bez `curl | sh`); k3s przypięty wersją, Tailscale bez pinu. Token k3s kasowany dopiero po udanej instalacji.
 
 - Bez CCM: węzły są kojarzone z VM przez `provider-id` z kubeleta, nie przez CCM.
