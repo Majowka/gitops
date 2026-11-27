@@ -8,7 +8,7 @@ chart 0.7.1, app v0.17.0). Testowy klaster PVE `KRA-PROXMOXC-03` (region `kra`),
 - Kontroler działa tylko na węźle `kamil-karpenter-host` (`dedicated=karpenter:NoSchedule`): tylko ten węzeł widzi API PVE.
 - Nowe węzły: Ubuntu noble, Tailscale (`tag:k3s-worker`) + k3s agent (`node-ip` z Tailscale, `flannel-iface=tailscale0`),
   `provider-id` ustawiony przez kubelet. Bez Proxmox CCM (mastery mają `disable-cloud-controller`).
-- NodePool `kamil-poc`: limit 8 vCPU / 16 GiB, bez taintu (pody Pending, których nie da się umieścić na obecnych workerach, wywołają scale-up, w granicach limitu), konsolidacja `WhenEmpty` po 5 min.
+- NodePool `kamil-poc`: limit 120 vCPU / 640 GiB (ok. połowa testowego PVE), bez taintu (pody Pending, których nie da się umieścić na obecnych workerach, wywołają scale-up, w granicach limitu), konsolidacja `WhenEmpty` po 5 min.
 
 ## Sekrety (poza repo, tworzone ręcznie z Infisical `infra-platform/prod`)
 
